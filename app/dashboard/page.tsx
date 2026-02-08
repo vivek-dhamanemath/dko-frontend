@@ -1,8 +1,23 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
+import {
+    Search,
+    Plus,
+    Link2,
+    X,
+    Check,
+    Loader2,
+    Sparkles,
+    LayoutGrid,
+    List
+} from "lucide-react";
+import FilterPanel, { FilterState } from "@/src/components/FilterPanel";
+import CategoryPills from "@/src/components/CategoryPills";
+import SavedViews from "@/src/components/SavedViews";
+import ResourceCard from "@/src/components/ResourceCard";
+import { api } from "@/src/lib/api";
 
 interface Resource {
     id: number;
@@ -28,18 +43,27 @@ export default function Dashboard() {
 
     // Data State
     const [resources, setResources] = useState<Resource[]>([]);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [successMessage, setSuccessMessage] = useState("");
     const [searchQuery, setSearchQuery] = useState("");
+    const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+
+    // Filter State
+    const [filters, setFilters] = useState<FilterState>({
+        categories: [],
+        tags: [],
+        dateRange: "",
+        sources: [],
+    });
 
     // Stats
     const [stats, setStats] = useState({ total: 0, topTags: [] as string[] });
+    const [sortBy, setSortBy] = useState("newest");
 
     useEffect(() => {
         loadResources();
 
-        // Click outside to collapse
         function handleClickOutside(event: MouseEvent) {
             if (formRef.current && !formRef.current.contains(event.target as Node) && !url && !title) {
                 setIsExpanded(false);
@@ -49,7 +73,6 @@ export default function Dashboard() {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [url, title]);
 
-    // Calculate stats when resources change
     useEffect(() => {
         const allTags = resources.flatMap(r => r.tags || []);
         const tagCounts = allTags.reduce((acc, tag) => {
@@ -91,7 +114,6 @@ export default function Dashboard() {
             setLoading(true);
             setError("");
 
-            // Auto-generate title if missing
             const finalTitle = title || new URL(url).hostname;
 
             await api.post("/resources", {
@@ -105,7 +127,6 @@ export default function Dashboard() {
             setSuccessMessage("Saved to Knowledge Hub");
             setTimeout(() => setSuccessMessage(""), 3000);
 
-            // Reset form
             setUrl("");
             setTitle("");
             setNote("");
@@ -123,313 +144,333 @@ export default function Dashboard() {
         }
     };
 
-    const handleLogout = () => {
-        localStorage.removeItem('accessToken');
-        router.push('/login');
-    };
+    const availableCategories = Array.from(new Set(resources.map(r => r.category).filter(Boolean)));
+    const availableTags = Array.from(new Set(resources.flatMap(r => r.tags || [])));
 
-    const getFaviconUrl = (url: string) => {
-        try {
-            const domain = new URL(url).hostname;
-            return `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
-        } catch {
-            return null;
+    const filteredResources = resources.filter(resource => {
+        const matchesSearch = !searchQuery ||
+            resource.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            resource.url.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            resource.tags?.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
+
+        const matchesCategory = filters.categories.length === 0 ||
+            filters.categories.includes(resource.category);
+
+        const matchesTags = filters.tags.length === 0 ||
+            resource.tags?.some(tag => filters.tags.includes(tag));
+
+        let matchesDateRange = true;
+        if (filters.dateRange) {
+            const resourceDate = new Date(resource.createdAt);
+            const now = new Date();
+            const daysAgo = parseInt(filters.dateRange);
+            const cutoffDate = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
+            matchesDateRange = resourceDate >= cutoffDate;
         }
-    };
 
-    const getCategoryColor = (category: string) => {
-        const colors: Record<string, string> = {
-            'react': 'bg-blue-100/50 text-blue-700 border-blue-200',
-            'backend': 'bg-emerald-100/50 text-emerald-700 border-emerald-200',
-            'devops': 'bg-violet-100/50 text-violet-700 border-violet-200',
-            'frontend': 'bg-sky-100/50 text-sky-700 border-sky-200',
-            'design': 'bg-pink-100/50 text-pink-700 border-pink-200',
-        };
-        const key = category?.toLowerCase() || '';
-        return colors[key] || 'bg-gray-100 text-gray-600 border-gray-200';
-    };
+        let matchesSource = true;
+        if (filters.sources.length > 0) {
+            const lowerUrl = resource.url.toLowerCase();
+            matchesSource = filters.sources.some(source => {
+                const s = source.toLowerCase();
+                if (s === 'github') return lowerUrl.includes('github.com');
+                if (s === 'youtube') return lowerUrl.includes('youtube.com') || lowerUrl.includes('youtu.be');
+                if (s === 'linkedin') return lowerUrl.includes('linkedin.com');
+                if (s === 'medium') return lowerUrl.includes('medium.com');
+                if (s === 'stackoverflow') return lowerUrl.includes('stackoverflow.com');
+                if (s === 'google docs' || s === 'docs') return lowerUrl.includes('docs.google.com');
+                if (s === 'dev.to') return lowerUrl.includes('dev.to');
+                if (s === 'articles') return lowerUrl.includes('medium.com') || lowerUrl.includes('dev.to');
+                return lowerUrl.includes(s.replace(/\s+/g, ''));
+            });
+        }
 
-    const filteredResources = resources.filter(r =>
-        r.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        r.url.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        r.tags?.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))
-    );
+        return matchesSearch && matchesCategory && matchesTags && matchesDateRange && matchesSource;
+    }).sort((a, b) => {
+        if (sortBy === "oldest") {
+            return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        }
+        if (sortBy === "az") {
+            return a.title.localeCompare(b.title);
+        }
+        // Default: Newest first
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
 
     return (
-        <div className="min-h-screen bg-[#F9FAFB] text-gray-900 font-sans">
-            {/* 
-        TOP NAVIGATION 
-        - Enterprise feel: Neutral background, subtle borders, focus on search 
-      */}
-            <nav className="sticky top-0 z-50 bg-white border-b border-gray-200 px-6 h-16 flex items-center justify-between">
-                <div className="flex items-center gap-12 flex-1">
-                    {/* Brand */}
-                    <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-gray-900 rounded-lg flex items-center justify-center text-white font-bold text-sm">DK</div>
-                        <span className="font-semibold text-gray-900 tracking-tight">KnowHub</span>
-                    </div>
-
-                    {/* Search Bar - Center Aligned */}
-                    <div className="relative max-w-md w-full hidden md:block group">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <svg className="h-4 w-4 text-gray-400 group-focus-within:text-gray-600 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                            </svg>
-                        </div>
-                        <input
-                            type="text"
-                            placeholder="Search resources..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-md leading-5 bg-gray-50 text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:ring-1 focus:ring-gray-300 focus:border-gray-300 sm:text-sm transition-all shadow-sm"
-                        />
-                    </div>
-                </div>
-
-                {/* Right Actions */}
-                <div className="flex items-center gap-6">
-                    <div className="hidden md:flex flex-col items-end">
-                        <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Resources</span>
-                        <span className="text-sm font-bold text-gray-900">{resources.length}</span>
-                    </div>
-
-                    <div className="h-8 w-px bg-gray-200 hidden md:block"></div>
-
-                    <div className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-1.5 rounded-lg transition-colors" onClick={handleLogout}>
-                        <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-gray-700 to-gray-900 flex items-center justify-center text-white text-xs font-semibold shadow-sm">
-                            ME
-                        </div>
-                        <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                    </div>
-                </div>
-            </nav>
-
-            <main className="max-w-7xl mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-12 gap-10">
-
-                {/* CENTER COLUMN - Quick Capture & Feed */}
-                <div className="lg:col-span-8 space-y-8">
-
-                    {/* QUICK CAPTURE CARD - The "Workspace" Feel */}
-                    <div
-                        ref={formRef}
-                        className={`bg-white rounded-xl border border-gray-200 shadow-sm transition-all duration-300 ease-in-out overflow-hidden ${isExpanded ? 'ring-2 ring-indigo-500/10 shadow-md' : 'hover:border-gray-300'}`}
-                    >
-                        <div className="p-1">
+        <div className="flex flex-col min-h-screen">
+            {/* Top Header Bar */}
+            <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-slate-200/60">
+                <div className="px-6 lg:px-8 h-16 flex items-center justify-between gap-6">
+                    {/* Search Bar */}
+                    <div className="flex-1 max-w-xl">
+                        <div className="relative group">
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
                             <input
                                 type="text"
-                                placeholder="Paste link here to capture..."
-                                value={url}
-                                onChange={(e) => setUrl(e.target.value)}
-                                onFocus={() => setIsExpanded(true)}
-                                className="w-full px-5 py-4 text-lg font-medium text-gray-900 placeholder-gray-400 bg-transparent border-none focus:ring-0 focus:outline-none"
+                                placeholder="Search resources..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="block w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-indigo-300 focus:ring-2 focus:ring-indigo-500/10 transition-all"
                             />
                         </div>
+                    </div>
 
-                        {/* Expandable Section */}
-                        <div className={`px-6 pb-6 space-y-5 transition-all duration-300 ${isExpanded ? 'opacity-100 max-h-[500px]' : 'opacity-0 max-h-0 hidden'}`}>
-                            <div className="h-px bg-gray-100 -mx-6 mb-4"></div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="md:col-span-2">
-                                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Title</label>
-                                    <input
-                                        type="text"
-                                        value={title}
-                                        onChange={(e) => setTitle(e.target.value)}
-                                        placeholder="Resource title (optional)"
-                                        className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors outline-none"
-                                    />
+                </div>
+            </header>
+
+            <main className="max-w-7xl mx-auto px-6 lg:px-12 py-8 grid grid-cols-1 xl:grid-cols-12 gap-8">
+                {/* Left Column */}
+                <div className="xl:col-span-8 space-y-8">
+
+                    {/* Quick Capture */}
+                    <div
+                        ref={formRef}
+                        className={`capture-card ${isExpanded ? 'expanded' : ''}`}
+                    >
+                        <div className="p-4">
+                            <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${isExpanded
+                                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/25'
+                                    : 'bg-slate-100 text-slate-400'
+                                    }`}>
+                                    <Plus className="w-5 h-5" />
                                 </div>
-
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Category</label>
-                                    <input
-                                        type="text"
-                                        value={category}
-                                        onChange={(e) => setCategory(e.target.value)}
-                                        placeholder="e.g. Design, Dev"
-                                        className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors outline-none"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Tags</label>
-                                    <input
-                                        type="text"
-                                        value={tags}
-                                        onChange={(e) => setTags(e.target.value)}
-                                        placeholder="comma, separated"
-                                        className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors outline-none"
-                                    />
-                                </div>
-
-                                <div className="md:col-span-2">
-                                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Notes</label>
-                                    <textarea
-                                        value={note}
-                                        onChange={(e) => setNote(e.target.value)}
-                                        placeholder="Add context..."
-                                        rows={2}
-                                        className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm resize-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors outline-none"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="flex items-center justify-between pt-2">
-                                <span className="text-xs text-gray-400">Press ⌘+Enter to save</span>
-                                <button
-                                    onClick={save}
-                                    disabled={loading || !url}
-                                    className="px-6 py-2 bg-gray-900 text-white font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm flex items-center gap-2"
-                                >
-                                    {loading ? (
-                                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                    ) : null}
-                                    Save Resource
-                                </button>
+                                <input
+                                    type="text"
+                                    placeholder="Add a URL or resource..."
+                                    value={url}
+                                    onChange={(e) => setUrl(e.target.value)}
+                                    onFocus={() => setIsExpanded(true)}
+                                    className="flex-1 text-base font-medium text-slate-900 placeholder-slate-400 bg-transparent border-none focus:outline-none focus:ring-0"
+                                />
+                                {!isExpanded && (
+                                    <span className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded-md">
+                                        Ctrl+K
+                                    </span>
+                                )}
                             </div>
                         </div>
 
-                        {/* Error/Success Feedback Inline */}
+                        {isExpanded && (
+                            <div className="px-4 pb-5 border-t border-slate-100 animate-fade-in">
+                                <div className="pt-4 space-y-4">
+                                    <div className="form-group">
+                                        <label className="form-label">URL</label>
+                                        <input
+                                            type="url"
+                                            value={url}
+                                            onChange={(e) => setUrl(e.target.value)}
+                                            placeholder="https://example.com"
+                                            className="input-professional"
+                                            required
+                                        />
+                                    </div>
+
+                                    <div className="form-group">
+                                        <label className="form-label">Title</label>
+                                        <input
+                                            type="text"
+                                            value={title}
+                                            onChange={(e) => setTitle(e.target.value)}
+                                            placeholder="Give it a memorable title"
+                                            className="input-professional"
+                                        />
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="form-group">
+                                            <label className="form-label">Category</label>
+                                            <input
+                                                type="text"
+                                                value={category}
+                                                onChange={(e) => setCategory(e.target.value)}
+                                                placeholder="e.g., Frontend"
+                                                className="input-professional"
+                                            />
+                                        </div>
+                                        <div className="form-group">
+                                            <label className="form-label">Tags</label>
+                                            <input
+                                                type="text"
+                                                value={tags}
+                                                onChange={(e) => setTags(e.target.value)}
+                                                placeholder="react, tutorial"
+                                                className="input-professional"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="form-group">
+                                        <label className="form-label">Notes</label>
+                                        <textarea
+                                            value={note}
+                                            onChange={(e) => setNote(e.target.value)}
+                                            placeholder="Why are you saving this? What should you remember?"
+                                            rows={3}
+                                            className="input-professional resize-none"
+                                        />
+                                    </div>
+
+                                    <div className="flex items-center justify-between pt-2">
+                                        <div className="flex items-center gap-2 text-xs text-slate-400">
+                                            <Sparkles className="w-3.5 h-3.5" />
+                                            <span>Auto-suggest enabled</span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <button onClick={() => setIsExpanded(false)} className="btn-ghost">
+                                                Cancel
+                                            </button>
+                                            <button onClick={save} disabled={loading || !url} className="btn-primary">
+                                                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                                                Save Resource
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {(error || successMessage) && (
-                            <div className={`px-6 py-3 text-sm font-medium ${error ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                            <div className={`px-4 py-3 border-t flex items-center gap-2 text-sm font-medium ${error
+                                ? 'bg-red-50 text-red-600 border-red-100'
+                                : 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                                }`}>
+                                {error ? <X className="w-4 h-4" /> : <Check className="w-4 h-4" />}
                                 {error || successMessage}
                             </div>
                         )}
                     </div>
 
-                    {/* RESOURCE FEED - Improved Scan-ability */}
-                    <div className="space-y-4">
-                        {filteredResources.length === 0 && !loading ? (
-                            <div className="text-center py-16 bg-white rounded-xl border border-dashed border-gray-300">
-                                <div className="mx-auto w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mb-4">
-                                    <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                                    </svg>
-                                </div>
-                                <h3 className="text-sm font-semibold text-gray-900">No resources found</h3>
-                                <p className="text-sm text-gray-500 mt-1">Try a different search or add a new one.</p>
-                            </div>
-                        ) : (
-                            filteredResources.map((resource, idx) => (
-                                <div
-                                    key={resource.id}
-                                    className="group bg-white rounded-xl border border-gray-200 p-5 hover:border-gray-300 hover:shadow-md transition-all duration-200 flex flex-col md:flex-row gap-5 animate-fade-in-up"
-                                    style={{ animationDelay: `${idx * 50}ms` }}
+                    {/* Category Pills */}
+                    <div className="pb-2">
+                        <CategoryPills
+                            categories={availableCategories}
+                            selectedCategories={filters.categories}
+                            onSelect={(category) => {
+                                setFilters(prev => {
+                                    if (category === "All") return { ...prev, categories: [] };
+                                    const isSelected = prev.categories.includes(category);
+                                    return {
+                                        ...prev,
+                                        categories: isSelected
+                                            ? prev.categories.filter(c => c !== category)
+                                            : [...prev.categories, category]
+                                    };
+                                });
+                            }}
+                        />
+                    </div>
+
+                    {/* Resources Header */}
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <h2 className="text-title text-slate-900">Resources</h2>
+                            <span className="px-2.5 py-0.5 bg-slate-100 text-slate-600 text-xs font-semibold rounded-full">
+                                {filteredResources.length}
+                            </span>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                            <select
+                                value={sortBy}
+                                onChange={(e) => setSortBy(e.target.value)}
+                                className="text-sm border border-slate-200 bg-white text-slate-600 font-medium rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all"
+                            >
+                                <option value="newest">Most Recent</option>
+                                <option value="oldest">Oldest First</option>
+                                <option value="az">A-Z</option>
+                            </select>
+
+                            <div className="flex items-center bg-slate-100 rounded-lg p-1">
+                                <button
+                                    onClick={() => setViewMode("grid")}
+                                    className={`p-2 rounded-md transition-all ${viewMode === "grid" ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
                                 >
-                                    {/* Icon Column */}
-                                    <div className="hidden md:flex flex-col items-center pt-1">
-                                        <div className="w-10 h-10 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center overflow-hidden">
-                                            <img
-                                                src={getFaviconUrl(resource.url) || ''}
-                                                onError={(e) => (e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOUNBM0FGIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMTAiLz48cGF0aCBkPSJNMiAxMmgyMCIvPjxwYXRoIGQ9Ik0xMiAyYTE1LjMgMTUuMyAwIDAgMSA0IDEwIDE1LjMgMTUuMyAwIDAgMS00IDEwIDE1LjMgMTUuMyAwIDAgMS00LTEwIDE1LjMgMTUuMyAwIDAgMSA0LTEweiIvPjwvc3ZnPg==')}
-                                                alt="icon"
-                                                className="w-5 h-5 opacity-80"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* Content Column */}
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-start justify-between gap-4">
-                                            <div>
-                                                <h3 className="text-base font-semibold text-gray-900 leading-tight group-hover:text-indigo-600 transition-colors">
-                                                    <a href={resource.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
-                                                        {resource.title}
-                                                    </a>
-                                                </h3>
-                                                <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
-                                                    <span className="truncate max-w-[200px] hover:text-gray-700">{new URL(resource.url).hostname}</span>
-                                                    {resource.category && (
-                                                        <>
-                                                            <span>•</span>
-                                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border ${getCategoryColor(resource.category)}`}>
-                                                                {resource.category}
-                                                            </span>
-                                                        </>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            {/* Top Right Actions / Date */}
-                                            <div className="flex-shrink-0 text-xs text-gray-400 whitespace-nowrap pt-1">
-                                                {new Date(resource.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                            </div>
-                                        </div>
-
-                                        {resource.note && (
-                                            <p className="mt-3 text-sm text-gray-600 leading-relaxed max-w-3xl">
-                                                {resource.note}
-                                            </p>
-                                        )}
-
-                                        {/* Tags Footer */}
-                                        {resource.tags && resource.tags.length > 0 && (
-                                            <div className="mt-4 flex flex-wrap gap-2">
-                                                {resource.tags.map(tag => (
-                                                    <span key={tag} className="text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded-md border border-gray-100 hover:bg-gray-100 cursor-pointer transition-colors">
-                                                        #{tag}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            ))
-                        )}
-                    </div>
-                </div>
-
-                {/* RIGHT SIDEBAR - Stats & Info */}
-                <div className="hidden lg:block lg:col-span-4 space-y-8">
-
-                    <div className="sticky top-24 space-y-8">
-                        {/* Stats Widget */}
-                        <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Overview</h4>
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-sm text-gray-600">Total Resources</span>
-                                    <span className="text-sm font-semibold text-gray-900">{stats.total}</span>
-                                </div>
-                                <div className="h-px bg-gray-100"></div>
-                                <div>
-                                    <span className="text-xs text-gray-400 mb-2 block">Top Tags</span>
-                                    <div className="flex flex-wrap gap-2">
-                                        {stats.topTags.length > 0 ? (
-                                            stats.topTags.map(tag => (
-                                                <span key={tag} className="text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded border border-indigo-100">
-                                                    {tag}
-                                                </span>
-                                            ))
-                                        ) : (
-                                            <span className="text-xs text-gray-400 italic">No tags yet</span>
-                                        )}
-                                    </div>
-                                </div>
+                                    <LayoutGrid className="w-4 h-4" />
+                                </button>
+                                <button
+                                    onClick={() => setViewMode("list")}
+                                    className={`p-2 rounded-md transition-all ${viewMode === "list" ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                                >
+                                    <List className="w-4 h-4" />
+                                </button>
                             </div>
                         </div>
+                    </div>
 
-                        {/* Quick Tips */}
-                        <div className="bg-gradient-to-br from-indigo-900 to-gray-900 rounded-xl p-6 text-white shadow-lg relative overflow-hidden group">
-                            <div className="absolute top-0 right-0 -mr-4 -mt-4 w-24 h-24 bg-white/10 rounded-full blur-2xl group-hover:bg-white/20 transition-all"></div>
-                            <h4 className="text-sm font-bold mb-2 relative z-10">Pro Tip</h4>
-                            <p className="text-sm text-gray-300 relative z-10 leading-relaxed">
-                                Use tags to organize resources by project or technology.
-                                Search works across titles, URLs, and tags instantly.
-                            </p>
+                    {/* Resources Grid */}
+                    {loading ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {[1, 2, 3, 4].map((i) => (
+                                <div key={i} className="bg-white rounded-xl border border-slate-200 p-6 animate-pulse">
+                                    <div className="flex gap-4">
+                                        <div className="w-10 h-10 rounded-xl bg-slate-100"></div>
+                                        <div className="flex-1 space-y-2">
+                                            <div className="h-4 bg-slate-100 rounded w-3/4"></div>
+                                            <div className="h-3 bg-slate-50 rounded w-1/2"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
+                    ) : filteredResources.length === 0 ? (
+                        <div className="empty-state bg-white rounded-2xl border border-dashed border-slate-300">
+                            <div className="empty-state-icon">
+                                <Link2 className="w-6 h-6" />
+                            </div>
+                            <h3 className="text-lg font-semibold text-slate-900 mb-1">No resources found</h3>
+                            <p className="text-sm text-slate-500 max-w-sm mx-auto mb-6">
+                                {searchQuery || filters.categories.length > 0
+                                    ? "Try adjusting your search or filters"
+                                    : "Start building your knowledge base by adding your first resource"}
+                            </p>
+                            {!searchQuery && filters.categories.length === 0 && (
+                                <button onClick={() => setIsExpanded(true)} className="btn-primary">
+                                    <Plus className="w-4 h-4" />
+                                    Add Resource
+                                </button>
+                            )}
+                        </div>
+                    ) : (
+                        <div className={`grid gap-6 ${viewMode === "grid" ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
+                            {filteredResources.map((resource, idx) => (
+                                <div key={resource.id} className="animate-fade-in" style={{ animationDelay: `${idx * 50}ms` }}>
+                                    <ResourceCard resource={resource} />
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
 
-                        <div className="text-center">
-                            <p className="text-xs text-gray-400">
-                                © 2026 KnowHub Workspace
+                {/* Right Column */}
+                <div className="hidden xl:block xl:col-span-4 space-y-6">
+                    <div className="sticky top-28 space-y-6">
+
+
+
+                        {/* Filter Panel */}
+                        <FilterPanel
+                            onFiltersChange={setFilters}
+                            availableCategories={availableCategories}
+                            availableTags={availableTags}
+                        />
+
+                        {/* Saved Views */}
+                        <SavedViews
+                            currentFilters={filters}
+                            onLoadView={setFilters}
+                        />
+
+                        {/* Footer */}
+                        <div className="text-center pt-4">
+                            <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
+                                KnowHub v1.0
                             </p>
                         </div>
                     </div>
                 </div>
-
             </main>
         </div>
     );
