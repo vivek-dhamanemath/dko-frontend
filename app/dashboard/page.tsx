@@ -114,7 +114,15 @@ export default function Dashboard() {
             setLoading(true);
             setError("");
 
-            const finalTitle = title || new URL(url).hostname;
+            let finalTitle = title;
+            if (!finalTitle) {
+                try {
+                    const urlToParse = url.match(/^https?:\/\//) ? url : `https://${url}`;
+                    finalTitle = new URL(urlToParse).hostname;
+                } catch (e) {
+                    finalTitle = url;
+                }
+            }
 
             await api.post("/resources", {
                 url,
