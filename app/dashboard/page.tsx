@@ -17,17 +17,11 @@ import FilterPanel, { FilterState } from "@/src/components/FilterPanel";
 import CategoryPills from "@/src/components/CategoryPills";
 import SavedViews from "@/src/components/SavedViews";
 import ResourceCard from "@/src/components/ResourceCard";
+import EditResourceModal from "@/src/components/EditResourceModal";
+import { resourceService, Resource } from "@/src/services/resourceService";
 import { api } from "@/src/lib/api";
 
-interface Resource {
-    id: number;
-    url: string;
-    title: string;
-    note: string;
-    category: string;
-    tags: string[];
-    createdAt: string;
-}
+
 
 export default function Dashboard() {
     const router = useRouter();
@@ -48,6 +42,8 @@ export default function Dashboard() {
     const [successMessage, setSuccessMessage] = useState("");
     const [searchQuery, setSearchQuery] = useState("");
     const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+    const [editingResource, setEditingResource] = useState<Resource | null>(null);
+    const [showArchived, setShowArchived] = useState(false);
 
     // Filter State
     const [filters, setFilters] = useState<FilterState>({
@@ -94,8 +90,8 @@ export default function Dashboard() {
     const loadResources = async () => {
         try {
             setLoading(true);
-            const response = await api.get("/resources");
-            setResources(response.data);
+            const data = await resourceService.getAll(showArchived);
+            setResources(data);
         } catch (err: any) {
             console.error("Failed to load resources:", err);
             setError("Failed to load resources");
@@ -149,6 +145,58 @@ export default function Dashboard() {
             setTimeout(() => setError(""), 3000);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        if (!confirm("Are you sure you want to delete this resource?")) return;
+
+        // Optimistic update
+        const previousResources = [...resources];
+        setResources(prev => prev.filter(r => r.id !== id));
+
+        try {
+            await resourceService.delete(id);
+        } catch (error) {
+            console.error("Failed to delete resource", error);
+            // Revert on failure
+            setResources(previousResources);
+            setError("Failed to delete resource");
+        }
+    };
+
+    const handleArchive = async (id: string, isCurrentlyArchived: boolean) => {
+        // Optimistic update - remove from current view
+        const previousResources = [...resources];
+        setResources(prev => prev.filter(r => r.id !== id));
+
+        try {
+            await resourceService.toggleArchive(id);
+            setSuccessMessage(isCurrentlyArchived ? "Resource unarchived" : "Resource archived");
+            setTimeout(() => setSuccessMessage(""), 3000);
+        } catch (error) {
+            console.error("Failed to toggle archive", error);
+            setResources(previousResources);
+            setError("Failed to update archive status");
+        }
+    };
+
+    const handleUpdate = async (id: string, data: any) => {
+        try {
+            // Need to map frontend Resource to UpdatedResourceRequest or just use data if compatible? 
+            // UpdateResourceRequest expects: url, title, note, category, tags.
+            // data passed from Modal is UpdateResourceRequest.
+            // But state resources array elements have extra fields like id, createdAt.
+
+            await resourceService.update(id, data);
+
+            // Refresh local state
+            setResources(prev => prev.map(r => r.id === id ? { ...r, ...data } : r));
+
+        } catch (error) {
+            console.error("Failed to update resource", error);
+            setError("Failed to update resource");
+            throw error;
         }
     };
 
@@ -374,7 +422,7 @@ export default function Dashboard() {
                     {/* Resources Header */}
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <h2 className="text-title text-slate-900">Resources</h2>
+                            <h2 className="text-title text-slate-900">{showArchived ? "Archived Resources" : "Resources"}</h2>
                             <span className="px-2.5 py-0.5 bg-slate-100 text-slate-600 text-xs font-semibold rounded-full">
                                 {filteredResources.length}
                             </span>
@@ -392,6 +440,13 @@ export default function Dashboard() {
                             </select>
 
                             <div className="flex items-center bg-slate-100 rounded-lg p-1">
+                                <button
+                                    onClick={() => setShowArchived(!showArchived)}
+                                    className={`p-2 rounded-md transition-all text-xs font-medium px-3 ${showArchived ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+                                >
+                                    {showArchived ? "Show Active" : "Archived"}
+                                </button>
+                                <div className="w-px h-4 bg-slate-200 mx-1"></div>
                                 <button
                                     onClick={() => setViewMode("grid")}
                                     className={`p-2 rounded-md transition-all ${viewMode === "grid" ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
@@ -445,7 +500,12 @@ export default function Dashboard() {
                         <div className={`grid gap-6 ${viewMode === "grid" ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
                             {filteredResources.map((resource, idx) => (
                                 <div key={resource.id} className="animate-fade-in" style={{ animationDelay: `${idx * 50}ms` }}>
-                                    <ResourceCard resource={resource} />
+                                    <ResourceCard
+                                        resource={resource}
+                                        onEdit={setEditingResource}
+                                        onDelete={handleDelete}
+                                        onArchive={handleArchive}
+                                    />
                                 </div>
                             ))}
                         </div>
@@ -480,6 +540,17 @@ export default function Dashboard() {
                     </div>
                 </div>
             </main>
-        </div>
+
+            {editingResource && (
+                <EditResourceModal
+                    resource={editingResource}
+                    isOpen={!!editingResource}
+                    onClose={() => setEditingResource(null)}
+                    onSave={handleUpdate}
+                    availableCategories={availableCategories}
+                />
+            )
+            }
+        </div >
     );
 }

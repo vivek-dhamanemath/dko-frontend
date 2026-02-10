@@ -22,18 +22,13 @@ import {
     GlobeIcon
 } from "./icons/BrandIcons";
 
-interface Resource {
-    id: number;
-    url: string;
-    title: string;
-    note: string;
-    category: string;
-    tags: string[];
-    createdAt: string;
-}
+import { Resource } from "../services/resourceService";
 
 interface ResourceCardProps {
     resource: Resource;
+    onEdit?: (resource: Resource) => void;
+    onDelete?: (id: string) => void;
+    onArchive?: (id: string, isArchived: boolean) => void;
 }
 
 const getSourceInfo = (url: string): { name: string; color: string; bgColor: string; icon: React.ElementType<{ className?: string }> } => {
@@ -121,7 +116,7 @@ const getCategoryStyle = (category: string): string => {
     return styles[category?.toLowerCase()] || 'bg-slate-100 text-slate-600';
 };
 
-export default function ResourceCard({ resource }: ResourceCardProps) {
+export default function ResourceCard({ resource, onEdit, onDelete, onArchive }: ResourceCardProps) {
     const [showActions, setShowActions] = useState(false);
     const [isBookmarked, setIsBookmarked] = useState(false);
 
@@ -198,16 +193,37 @@ export default function ResourceCard({ resource }: ResourceCardProps) {
                         {/* Dropdown Menu */}
                         {showActions && (
                             <div className="absolute right-0 top-full mt-1 w-36 bg-white rounded-xl border border-slate-200 shadow-lg z-20 py-1 animate-fade-in">
-                                <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors">
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setShowActions(false);
+                                        onEdit?.(resource);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+                                >
                                     <Edit3 className="w-3.5 h-3.5" />
                                     Edit
                                 </button>
-                                <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors">
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setShowActions(false);
+                                        onArchive?.(resource.id, resource.isArchived);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+                                >
                                     <Archive className="w-3.5 h-3.5" />
-                                    Archive
+                                    {resource.isArchived ? "Unarchive" : "Archive"}
                                 </button>
                                 <div className="h-px bg-slate-100 my-1" />
-                                <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors">
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setShowActions(false);
+                                        onDelete?.(resource.id);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                                >
                                     <Trash2 className="w-3.5 h-3.5" />
                                     Delete
                                 </button>
@@ -218,11 +234,13 @@ export default function ResourceCard({ resource }: ResourceCardProps) {
             </div>
 
             {/* Note/Description */}
-            {resource.note && (
-                <p className="mt-3 text-sm text-slate-500 leading-relaxed line-clamp-2">
-                    {resource.note}
-                </p>
-            )}
+            {
+                resource.note && (
+                    <p className="mt-3 text-sm text-slate-500 leading-relaxed line-clamp-2">
+                        {resource.note}
+                    </p>
+                )
+            }
 
             {/* Tags Footer */}
             <div className="flex items-center flex-wrap gap-1.5 mt-4 pt-3.5 border-t border-slate-100">
@@ -262,6 +280,6 @@ export default function ResourceCard({ resource }: ResourceCardProps) {
                     <ExternalLink className="w-3.5 h-3.5 text-slate-400 hover:text-indigo-600 transition-colors" />
                 </a>
             </div>
-        </div>
+        </div >
     );
 }
