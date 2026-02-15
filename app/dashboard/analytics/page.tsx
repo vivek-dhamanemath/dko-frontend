@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { api } from "@/src/lib/api";
+import { resourceService } from "@/src/services/resourceService";
 import {
     BarChart3,
     PieChart,
@@ -11,11 +12,13 @@ import {
     Github,
     Youtube,
     BookOpen,
-    Loader2
+    Loader2,
+    Archive,
+    Trash2
 } from "lucide-react";
 
 interface Resource {
-    id: string; // Changed to string to match UUID
+    id: string;
     url: string;
     title: string;
     category: string;
@@ -23,10 +26,17 @@ interface Resource {
     createdAt: string;
 }
 
+interface Stats {
+    lifetime: number;
+    active: number;
+    archived: number;
+    deleted: number;
+}
+
 export default function AnalyticsPage() {
     const [loading, setLoading] = useState(true);
+    const [serverStats, setServerStats] = useState<Stats>({ lifetime: 0, active: 0, archived: 0, deleted: 0 });
     const [stats, setStats] = useState({
-        total: 0,
         thisMonth: 0,
         categories: [] as { name: string; count: number; percentage: number }[],
         sources: [] as { name: string; count: number; icon: any; color: string }[],
@@ -39,8 +49,12 @@ export default function AnalyticsPage() {
 
     const loadData = async () => {
         try {
+            // Fetch server-computed stats (single API call for counts)
+            const statsData = await resourceService.getStats();
+            setServerStats(statsData);
+
+            // Fetch active resources for category/source/tag breakdown
             const response = await api.get("/resources");
-            console.log("Analytics Data:", response.data); // Debug logging
             const resources: Resource[] = Array.isArray(response.data) ? response.data : [];
             processStats(resources);
         } catch (error) {
@@ -63,7 +77,6 @@ export default function AnalyticsPage() {
         // Categories
         const catCounts: Record<string, number> = {};
         resources.forEach(r => {
-            // Normalize category: trim whitespace and handle empty/null
             const cat = r.category?.trim() ? r.category.trim() : 'Uncategorized';
             catCounts[cat] = (catCounts[cat] || 0) + 1;
         });
@@ -72,10 +85,9 @@ export default function AnalyticsPage() {
             .map(([name, count]) => ({
                 name,
                 count,
-                percentage: Math.round((count / total) * 100)
+                percentage: total > 0 ? Math.round((count / total) * 100) : 0
             }))
             .sort((a, b) => b.count - a.count)
-            // Show top 8 categories instead of 5 to include more user data
             .slice(0, 8);
 
         // Sources
@@ -108,7 +120,7 @@ export default function AnalyticsPage() {
             .sort((a, b) => b.count - a.count)
             .slice(0, 8);
 
-        setStats({ total, thisMonth, categories, sources, topTags });
+        setStats({ thisMonth, categories, sources, topTags });
     };
 
     if (loading) {
@@ -127,15 +139,16 @@ export default function AnalyticsPage() {
                 <p className="text-slate-500">Insights into your knowledge base growth and distribution</p>
             </div>
 
-            {/* Overview Cards */}
+            {/* Overview Cards — 4 metrics */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {/* Lifetime Created */}
                 <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
                     <div className="relative z-10">
-                        <p className="text-sm font-medium text-slate-500 uppercase tracking-wider">Total Resources</p>
-                        <h3 className="text-3xl font-bold text-slate-900 mt-2">{stats.total}</h3>
+                        <p className="text-sm font-medium text-slate-500 uppercase tracking-wider">Lifetime Created</p>
+                        <h3 className="text-3xl font-bold text-slate-900 mt-2">{serverStats.lifetime}</h3>
                         <div className="flex items-center gap-1 mt-2 text-emerald-600 text-sm font-medium">
                             <TrendingUp className="w-4 h-4" />
-                            <span>Lifetime</span>
+                            <span>Never decreases</span>
                         </div>
                     </div>
                     <div className="absolute right-0 top-0 p-6 opacity-5">
@@ -143,13 +156,14 @@ export default function AnalyticsPage() {
                     </div>
                 </div>
 
+                {/* Active Resources */}
                 <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
                     <div className="relative z-10">
-                        <p className="text-sm font-medium text-slate-500 uppercase tracking-wider">Added This Month</p>
-                        <h3 className="text-3xl font-bold text-slate-900 mt-2">{stats.thisMonth}</h3>
+                        <p className="text-sm font-medium text-slate-500 uppercase tracking-wider">Active Resources</p>
+                        <h3 className="text-3xl font-bold text-slate-900 mt-2">{serverStats.active}</h3>
                         <div className="flex items-center gap-1 mt-2 text-indigo-600 text-sm font-medium">
                             <Activity className="w-4 h-4" />
-                            <span>Active Growth</span>
+                            <span>In knowledge base</span>
                         </div>
                     </div>
                     <div className="absolute right-0 top-0 p-6 opacity-5">
@@ -157,7 +171,40 @@ export default function AnalyticsPage() {
                     </div>
                 </div>
 
-                <div className="bg-gradient-to-br from-indigo-600 to-violet-700 p-6 rounded-2xl shadow-lg text-white relative overflow-hidden col-span-1 md:col-span-2">
+                {/* Archived */}
+                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
+                    <div className="relative z-10">
+                        <p className="text-sm font-medium text-slate-500 uppercase tracking-wider">Archived</p>
+                        <h3 className="text-3xl font-bold text-slate-900 mt-2">{serverStats.archived}</h3>
+                        <div className="flex items-center gap-1 mt-2 text-amber-600 text-sm font-medium">
+                            <Archive className="w-4 h-4" />
+                            <span>Stored away</span>
+                        </div>
+                    </div>
+                    <div className="absolute right-0 top-0 p-6 opacity-5">
+                        <Archive className="w-24 h-24" />
+                    </div>
+                </div>
+
+                {/* In Trash */}
+                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
+                    <div className="relative z-10">
+                        <p className="text-sm font-medium text-slate-500 uppercase tracking-wider">In Trash</p>
+                        <h3 className="text-3xl font-bold text-slate-900 mt-2">{serverStats.deleted}</h3>
+                        <div className="flex items-center gap-1 mt-2 text-red-500 text-sm font-medium">
+                            <Trash2 className="w-4 h-4" />
+                            <span>Recoverable</span>
+                        </div>
+                    </div>
+                    <div className="absolute right-0 top-0 p-6 opacity-5">
+                        <Trash2 className="w-24 h-24" />
+                    </div>
+                </div>
+            </div>
+
+            {/* Most Active Category + Added This Month */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-gradient-to-br from-indigo-600 to-violet-700 p-6 rounded-2xl shadow-lg text-white relative overflow-hidden">
                     <div className="relative z-10">
                         <h3 className="text-lg font-semibold opacity-90">Most Active Category</h3>
                         <div className="mt-4 flex items-end gap-3">
@@ -167,6 +214,19 @@ export default function AnalyticsPage() {
                     </div>
                     <div className="absolute right-0 bottom-0 opacity-10">
                         <Activity className="w-48 h-48 -mr-10 -mb-10" />
+                    </div>
+                </div>
+
+                <div className="bg-gradient-to-br from-emerald-600 to-teal-700 p-6 rounded-2xl shadow-lg text-white relative overflow-hidden">
+                    <div className="relative z-10">
+                        <h3 className="text-lg font-semibold opacity-90">Added This Month</h3>
+                        <div className="mt-4 flex items-end gap-3">
+                            <span className="text-4xl font-bold">{stats.thisMonth}</span>
+                            <span className="mb-1 opacity-75">new resources</span>
+                        </div>
+                    </div>
+                    <div className="absolute right-0 bottom-0 opacity-10">
+                        <TrendingUp className="w-48 h-48 -mr-10 -mb-10" />
                     </div>
                 </div>
             </div>

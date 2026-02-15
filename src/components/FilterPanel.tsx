@@ -30,12 +30,11 @@ const dateRanges = [
     { value: "365", label: "Last year" },
 ];
 
+import { SOURCES, OTHER_SOURCE } from "../utils/sourceUtils";
+
 const sourceOptions = [
-    { value: "github", label: "GitHub", icon: "🐙" },
-    { value: "youtube", label: "YouTube", icon: "📺" },
-    { value: "medium", label: "Medium", icon: "✍️" },
-    { value: "stackoverflow", label: "Stack Overflow", icon: "🥞" },
-    { value: "docs", label: "Documentation", icon: "📄" },
+    ...SOURCES.map(s => ({ value: s.id, label: s.name, icon: s.labelIcon })),
+    { value: OTHER_SOURCE.id, label: OTHER_SOURCE.name, icon: OTHER_SOURCE.labelIcon }
 ];
 
 export default function FilterPanel({

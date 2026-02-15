@@ -10,8 +10,13 @@ import {
     Settings,
     LogOut,
     ChevronRight,
-    Sparkles
+    Sparkles,
+    Pin,
+    Archive,
+    Trash2,
+    Folder
 } from "lucide-react";
+import Collections from "./Collections";
 
 interface NavItem {
     name: string;
@@ -25,7 +30,10 @@ interface SidebarProps {
 
 const navItems: NavItem[] = [
     { name: "All Resources", href: "/dashboard", icon: LayoutGrid },
+    { name: "Pinned", href: "/dashboard/pinned", icon: Pin },
+    { name: "Archived", href: "/dashboard/archived", icon: Archive },
     { name: "Tags", href: "/dashboard/tags", icon: Tag },
+    { name: "Trash", href: "/dashboard/trash", icon: Trash2 },
     { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
 ];
 
@@ -75,6 +83,11 @@ export default function Sidebar({ onLogout }: SidebarProps) {
                     );
                 })}
             </nav>
+
+            {/* Collections Section */}
+            <div className="px-3 py-4 border-t border-slate-800/50">
+                <Collections />
+            </div>
 
             {/* Bottom Section */}
             <div className="p-3 border-t border-slate-800/50 space-y-1">
