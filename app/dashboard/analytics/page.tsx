@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { api } from "@/src/lib/api";
-import { resourceService } from "@/src/services/resourceService";
+import { Resource, resourceService } from "@/src/services/resourceService";
 import {
     BarChart3,
     PieChart,
@@ -16,15 +16,6 @@ import {
     Archive,
     Trash2
 } from "lucide-react";
-
-interface Resource {
-    id: string;
-    url: string;
-    title: string;
-    category: string;
-    tags: string[];
-    createdAt: string;
-}
 
 interface Stats {
     lifetime: number;

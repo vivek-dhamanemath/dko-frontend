@@ -1,19 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { api } from "@/src/lib/api";
 import { Tag, Hash, Loader2 } from "lucide-react";
 import ResourceCard from "@/src/components/ResourceCard";
-
-interface Resource {
-    id: number;
-    url: string;
-    title: string;
-    note: string;
-    category: string;
-    tags: string[];
-    createdAt: string;
-}
+import { Resource, resourceService } from "@/src/services/resourceService";
 
 export default function TagsPage() {
     const [resources, setResources] = useState<Resource[]>([]);
@@ -26,8 +16,8 @@ export default function TagsPage() {
 
     const loadResources = async () => {
         try {
-            const response = await api.get("/resources");
-            setResources(response.data);
+            const data = await resourceService.getAll();
+            setResources(data);
         } catch (error) {
             console.error("Failed to load resources:", error);
         } finally {
@@ -83,8 +73,8 @@ export default function TagsPage() {
                             <button
                                 onClick={() => setSelectedTag(null)}
                                 className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${selectedTag === null
-                                        ? "bg-indigo-50 text-indigo-700 font-medium"
-                                        : "text-slate-600 hover:bg-slate-50"
+                                    ? "bg-indigo-50 text-indigo-700 font-medium"
+                                    : "text-slate-600 hover:bg-slate-50"
                                     }`}
                             >
                                 All Resources
@@ -94,8 +84,8 @@ export default function TagsPage() {
                                     key={tag}
                                     onClick={() => setSelectedTag(tag)}
                                     className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${selectedTag === tag
-                                            ? "bg-indigo-50 text-indigo-700 font-medium"
-                                            : "text-slate-600 hover:bg-slate-50"
+                                        ? "bg-indigo-50 text-indigo-700 font-medium"
+                                        : "text-slate-600 hover:bg-slate-50"
                                         }`}
                                 >
                                     <span>#{tag}</span>

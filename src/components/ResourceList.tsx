@@ -78,6 +78,8 @@ export default function ResourceList({ filters }: ResourceListProps) {
         );
     }
 
+    const availableCategories = Array.from(new Set(resources.map(r => r.category).filter(Boolean)));
+
     return (
         <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -97,6 +99,7 @@ export default function ResourceList({ filters }: ResourceListProps) {
                     isOpen={!!editingResource}
                     onClose={() => setEditingResource(null)}
                     onSave={handleUpdate}
+                    availableCategories={availableCategories}
                 />
             )}
         </>
