@@ -17,6 +17,7 @@ import {
     Folder
 } from "lucide-react";
 import Collections from "./Collections";
+import { User } from "../services/authService";
 
 interface NavItem {
     name: string;
@@ -26,6 +27,7 @@ interface NavItem {
 
 interface SidebarProps {
     onLogout?: () => void;
+    user?: User | null;
 }
 
 const navItems: NavItem[] = [
@@ -37,7 +39,7 @@ const navItems: NavItem[] = [
     { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
 ];
 
-export default function Sidebar({ onLogout }: SidebarProps) {
+export default function Sidebar({ onLogout, user }: SidebarProps) {
     const pathname = usePathname();
 
     const handleLogout = () => {
@@ -47,9 +49,9 @@ export default function Sidebar({ onLogout }: SidebarProps) {
     };
 
     return (
-        <aside className="flex flex-col h-screen w-64 bg-[#0f172a]">
+        <aside className="flex flex-col h-screen w-64 bg-[#0f172a] overflow-hidden">
             {/* Brand */}
-            <div className="p-5 border-b border-slate-800/50">
+            <div className="flex-shrink-0 p-5 border-b border-slate-800/50">
                 <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 flex-shrink-0">
                         <Sparkles className="w-4 h-4 text-white" />
@@ -61,36 +63,38 @@ export default function Sidebar({ onLogout }: SidebarProps) {
                 </div>
             </div>
 
-            {/* Navigation */}
-            <nav className="flex-1 p-3 space-y-1">
-                {navItems.map((item) => {
-                    const isActive = pathname === item.href;
-                    const Icon = item.icon;
+            {/* Scrollable middle: Navigation + Collections */}
+            <div className="flex-1 overflow-y-auto min-h-0">
+                <nav className="p-3 space-y-1">
+                    {navItems.map((item) => {
+                        const isActive = pathname === item.href;
+                        const Icon = item.icon;
 
-                    return (
-                        <Link
-                            key={item.href}
-                            href={item.href}
-                            className={`group flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 ${isActive
-                                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
-                                : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"
-                                }`}
-                        >
-                            <Icon className={`w-[18px] h-[18px] flex-shrink-0 ${isActive ? "text-white" : ""}`} />
-                            <span className="text-sm font-medium flex-1">{item.name}</span>
-                            {isActive && <ChevronRight className="w-4 h-4 opacity-50" />}
-                        </Link>
-                    );
-                })}
-            </nav>
+                        return (
+                            <Link
+                                key={item.href}
+                                href={item.href}
+                                className={`group flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 ${isActive
+                                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
+                                    : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"
+                                    }`}
+                            >
+                                <Icon className={`w-[18px] h-[18px] flex-shrink-0 ${isActive ? "text-white" : ""}`} />
+                                <span className="text-sm font-medium flex-1">{item.name}</span>
+                                {isActive && <ChevronRight className="w-4 h-4 opacity-50" />}
+                            </Link>
+                        );
+                    })}
+                </nav>
 
-            {/* Collections Section */}
-            <div className="px-3 py-4 border-t border-slate-800/50">
-                <Collections />
+                {/* Collections Section */}
+                <div className="px-3 py-4 border-t border-slate-800/50">
+                    <Collections />
+                </div>
             </div>
 
-            {/* Bottom Section */}
-            <div className="p-3 border-t border-slate-800/50 space-y-1">
+            {/* Bottom Section — always visible */}
+            <div className="flex-shrink-0 p-3 border-t border-slate-800/50 space-y-1">
                 <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 transition-all duration-200">
                     <Settings className="w-[18px] h-[18px] flex-shrink-0" />
                     <span className="text-sm font-medium">Settings</span>
@@ -106,15 +110,25 @@ export default function Sidebar({ onLogout }: SidebarProps) {
 
                 {/* User Profile */}
                 <div className="mt-3 pt-3 border-t border-slate-800/50">
-                    <div className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-slate-800/30 transition-colors cursor-pointer">
-                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center text-xs font-semibold text-white">
-                            VD
+                    {user ? (
+                        <div className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-slate-800/30 transition-colors cursor-pointer">
+                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center text-xs font-semibold text-white uppercase">
+                                {user.email.slice(0, 2)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-slate-200 truncate">{user.email}</p>
+                                <p className="text-[10px] text-slate-500 capitalize">{user.role?.toLowerCase() ?? 'user'}</p>
+                            </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-slate-200 truncate">Vivek Dhamane</p>
-                            <p className="text-[10px] text-slate-500">Pro Plan</p>
+                    ) : (
+                        <div className="flex items-center gap-3 px-2 py-2">
+                            <div className="w-8 h-8 rounded-lg bg-slate-800 animate-pulse flex-shrink-0" />
+                            <div className="flex-1 space-y-1.5">
+                                <div className="h-3 bg-slate-800 rounded animate-pulse w-3/4" />
+                                <div className="h-2 bg-slate-800 rounded animate-pulse w-1/2" />
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
             </div>
         </aside>

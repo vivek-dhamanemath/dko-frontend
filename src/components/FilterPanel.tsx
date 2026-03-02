@@ -5,7 +5,6 @@ import {
     SlidersHorizontal,
     ChevronDown,
     Calendar,
-    FolderOpen,
     Hash,
     Globe
 } from "lucide-react";
@@ -56,7 +55,6 @@ export default function FilterPanel({
         sources: false,
     });
 
-    // Notify parent when filters change (using useEffect to avoid setState during render)
     useEffect(() => {
         onFiltersChange?.(filters);
     }, [filters, onFiltersChange]);
@@ -74,7 +72,6 @@ export default function FilterPanel({
             const updated = current.includes(value)
                 ? current.filter(v => v !== value)
                 : [...current, value];
-
             return { ...prev, [type]: updated };
         });
     };
@@ -98,8 +95,8 @@ export default function FilterPanel({
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                    <SlidersHorizontal className="w-4 h-4 text-slate-500" />
-                    <h3 className="text-sm font-semibold text-slate-900">Filters</h3>
+                    <SlidersHorizontal className="w-4 h-4 text-slate-400" />
+                    <h3 className="text-sm font-semibold text-slate-800">Filters</h3>
                 </div>
                 {hasActiveFilters && (
                     <button
@@ -110,8 +107,6 @@ export default function FilterPanel({
                     </button>
                 )}
             </div>
-
-
 
             {/* Tags */}
             <div className="filter-section">
@@ -134,8 +129,8 @@ export default function FilterPanel({
                                     key={tag}
                                     onClick={() => toggleFilter('tags', tag)}
                                     className={`text-xs px-2.5 py-1 rounded-md border transition-all ${filters.tags.includes(tag)
-                                        ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
-                                        : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-800'
                                         }`}
                                 >
                                     #{tag}
@@ -173,7 +168,7 @@ export default function FilterPanel({
                                     name="dateRange"
                                     checked={filters.dateRange === range.value}
                                     onChange={() => setDateRange(range.value)}
-                                    className="w-4 h-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                    className="w-4 h-4 border-slate-300 text-indigo-500 focus:ring-indigo-500/20 bg-white"
                                 />
                                 <span className="text-sm text-slate-600">{range.label}</span>
                             </label>
@@ -206,7 +201,7 @@ export default function FilterPanel({
                                     type="checkbox"
                                     checked={filters.sources.includes(source.value)}
                                     onChange={() => toggleFilter('sources', source.value)}
-                                    className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                    className="w-4 h-4 rounded border-slate-300 text-indigo-500 focus:ring-indigo-500/20 bg-white"
                                 />
                                 <span className="text-sm">{source.icon}</span>
                                 <span className="text-sm text-slate-600">{source.label}</span>

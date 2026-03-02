@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import {
     Search,
     Plus,
@@ -10,8 +10,6 @@ import {
     Check,
     Loader2,
     Sparkles,
-    LayoutGrid,
-    List,
     Archive,
     Trash2,
     AlertTriangle,
@@ -30,7 +28,6 @@ import { getSource } from "@/src/utils/sourceUtils";
 
 
 export default function Dashboard({ pinnedOnly = false, archivedOnly = false, trashOnly = false }: { pinnedOnly?: boolean; archivedOnly?: boolean; trashOnly?: boolean }) {
-    const router = useRouter();
 
     // Form State
     const [url, setUrl] = useState("");
@@ -49,10 +46,9 @@ export default function Dashboard({ pinnedOnly = false, archivedOnly = false, tr
     const [error, setError] = useState("");
     const [successMessage, setSuccessMessage] = useState("");
     const [searchQuery, setSearchQuery] = useState("");
-    const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
     const [editingResource, setEditingResource] = useState<Resource | null>(null);
-    const [showArchived, setShowArchived] = useState(archivedOnly);
-    const [showTrash, setShowTrash] = useState(trashOnly);
+    const showArchived = archivedOnly;
+    const showTrash = trashOnly;
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [collections, setCollections] = useState<Collection[]>([]);
     const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -82,7 +78,6 @@ export default function Dashboard({ pinnedOnly = false, archivedOnly = false, tr
         const currentPath = window.location.pathname;
         const newUrl = query ? `${currentPath}?${query}` : currentPath;
 
-        // Use replaceState to sync URL without bloating history stack
         window.history.replaceState(null, '', newUrl);
     }, [filters]);
 
@@ -109,15 +104,16 @@ export default function Dashboard({ pinnedOnly = false, archivedOnly = false, tr
         }
     }, [searchParams]);
 
-    // Stats
-    const [stats, setStats] = useState({ total: 0, topTags: [] as string[] });
     const [sortBy, setSortBy] = useState("newest");
+
+    // Pagination
+    const PAGE_SIZE = 20;
+    const [currentPage, setCurrentPage] = useState(1);
 
     useEffect(() => {
         loadResources();
     }, [archivedOnly, trashOnly, filters, currentCollectionId]);
 
-    // Independent effect for collections to ensure they are always available
     useEffect(() => {
         loadCollections();
     }, []);
@@ -133,22 +129,9 @@ export default function Dashboard({ pinnedOnly = false, archivedOnly = false, tr
     }, [url, title]);
 
     useEffect(() => {
-        const allTags = resources.flatMap(r => r.tags || []);
-        const tagCounts = allTags.reduce((acc, tag) => {
-            acc[tag] = (acc[tag] || 0) + 1;
-            return acc;
-        }, {} as Record<string, number>);
+        setCurrentPage(1);
+    }, [searchQuery, filters, currentCollectionId, archivedOnly, trashOnly]);
 
-        const topTags = Object.entries(tagCounts)
-            .sort(([, a], [, b]) => b - a)
-            .slice(0, 5)
-            .map(([tag]) => tag);
-
-        setStats({
-            total: resources.length,
-            topTags
-        });
-    }, [resources]);
 
     const loadCollections = async () => {
         try {
@@ -167,7 +150,6 @@ export default function Dashboard({ pinnedOnly = false, archivedOnly = false, tr
             if (showTrash) {
                 data = await resourceService.getTrash();
             } else {
-                // Always use filtered endpoint to support collectionId and other filters
                 data = await resourceService.getFiltered({
                     categories: filters.categories,
                     tags: filters.tags,
@@ -195,7 +177,7 @@ export default function Dashboard({ pinnedOnly = false, archivedOnly = false, tr
     };
 
     const fetchMetadata = async (urlToFetch: string) => {
-        if (!urlToFetch || title) return; // Don't overwrite if title exists
+        if (!urlToFetch || title) return;
 
         try {
             const metadata = await resourceService.fetchMetadata(urlToFetch);
@@ -269,7 +251,6 @@ export default function Dashboard({ pinnedOnly = false, archivedOnly = false, tr
         if (!deletingId) return;
         const id = deletingId;
 
-        // Optimistic update
         const previousResources = [...resources];
         setResources(prev => prev.filter(r => r.id !== id));
 
@@ -277,14 +258,12 @@ export default function Dashboard({ pinnedOnly = false, archivedOnly = false, tr
             await resourceService.delete(id);
         } catch (error) {
             console.error("Failed to delete resource", error);
-            // Revert on failure
             setResources(previousResources);
             setError("Failed to delete resource");
         }
     };
 
     const handleArchive = async (id: string, isCurrentlyArchived: boolean) => {
-        // Optimistic update - remove from current view
         const previousResources = [...resources];
         setResources(prev => prev.filter(r => r.id !== id));
 
@@ -314,7 +293,6 @@ export default function Dashboard({ pinnedOnly = false, archivedOnly = false, tr
         const resource = resources.find(r => r.id === id);
         if (!resource) return;
 
-        // Optimistic update
         setResources(prev => prev.map(r =>
             r.id === id ? { ...r, isPinned: !r.isPinned } : r
         ));
@@ -323,7 +301,6 @@ export default function Dashboard({ pinnedOnly = false, archivedOnly = false, tr
             await resourceService.togglePin(id);
         } catch (error) {
             console.error("Failed to toggle pin", error);
-            // Revert
             setResources(prev => prev.map(r =>
                 r.id === id ? { ...r, isPinned: resource.isPinned } : r
             ));
@@ -361,10 +338,6 @@ export default function Dashboard({ pinnedOnly = false, archivedOnly = false, tr
         }
     };
 
-    const handleEmptyTrash = () => {
-        setShowEmptyTrashConfirm(true);
-    };
-
     const confirmEmptyTrash = async () => {
         try {
             setLoading(true);
@@ -386,14 +359,6 @@ export default function Dashboard({ pinnedOnly = false, archivedOnly = false, tr
         if (selected) next.add(id);
         else next.delete(id);
         setSelectedIds(next);
-    };
-
-    const toggleSelectAll = () => {
-        if (selectedIds.size === filteredResources.length) {
-            setSelectedIds(new Set());
-        } else {
-            setSelectedIds(new Set(filteredResources.map(r => r.id)));
-        }
     };
 
     const handleBulkArchive = async () => {
@@ -503,170 +468,170 @@ export default function Dashboard({ pinnedOnly = false, archivedOnly = false, tr
             matchesSource = filters.sources.includes(sourceInfo.id);
         }
 
-        // Pinned only filter
         if (pinnedOnly && !resource.isPinned) return false;
 
         return matchesSearch && matchesCategory && matchesTags && matchesDateRange && matchesSource;
     }).sort((a, b) => {
-        // Pinned items always come first
         if (a.isPinned && !b.isPinned) return -1;
         if (!a.isPinned && b.isPinned) return 1;
 
-        // Then apply chosen sort
         if (sortBy === "oldest") {
             return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
         }
         if (sortBy === "az") {
             return a.title.localeCompare(b.title);
         }
-        // Default: Newest first
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
+    const totalPages = Math.ceil(filteredResources.length / PAGE_SIZE);
+    const paginatedResources = filteredResources.slice(
+        (currentPage - 1) * PAGE_SIZE,
+        currentPage * PAGE_SIZE
+    );
+
     return (
-        <div className="flex flex-col min-h-screen">
-            {/* Top Header Bar */}
-            <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-xl border-b border-slate-800 shadow-sm">
-                <div className="px-6 lg:px-8 h-16 flex items-center justify-between gap-6">
-                    {/* Search Bar */}
+        <div className="flex flex-col min-h-screen bg-slate-50">
+
+            {/* ── Sticky Top Header ── */}
+            <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-xl border-b border-slate-200 shadow-sm">
+                <div className="px-6 lg:px-8 h-14 flex items-center gap-6">
                     <div className="flex-1 max-w-xl">
                         <div className="relative group">
-                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
                             <input
                                 type="text"
                                 placeholder="Search resources, tags, or URLs..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="block w-full pl-10 pr-4 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:bg-slate-800 focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10 transition-all"
+                                className="block w-full pl-10 pr-4 py-2 bg-slate-100/80 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
                             />
                         </div>
                     </div>
                 </div>
             </header>
 
-            <main className="max-w-7xl mx-auto px-6 lg:px-12 py-8 grid grid-cols-1 xl:grid-cols-12 gap-8">
-                {/* Left Column */}
-                <div className="xl:col-span-8 space-y-8">
+            {/* ── Bento Grid Layout ── */}
+            <main className="flex-1 px-6 lg:px-8 py-5 max-w-[1600px] mx-auto w-full">
+                <div className="grid grid-cols-12 gap-4">
 
-                    {/* Quick Capture */}
-                    {!pinnedOnly && !archivedOnly && !trashOnly && (
+                    {/* ── ROW 1: Quick Capture (7 cols) + Stats 2×2 (5 cols) ── */}
+
+                    {/* Quick Capture Tile */}
+                    {!pinnedOnly && !archivedOnly && !trashOnly ? (
                         <div
                             ref={formRef}
-                            className={`capture-card transition-all duration-300 ${isExpanded ? 'expanded bg-slate-900 border-slate-800 shadow-2xl ring-1 ring-white/10' : 'bg-white border-slate-200 hover:border-slate-300'}`}
+                            className={`col-span-12 xl:col-span-7 bg-white border rounded-2xl transition-all duration-300 overflow-hidden shadow-sm ${isExpanded
+                                ? 'border-indigo-400 shadow-lg shadow-indigo-500/8'
+                                : 'border-slate-200 hover:border-slate-300'
+                                }`}
                         >
-                            <div className="p-4">
+                            <div className="p-5">
                                 {isExpanded && (
-                                    <div className="mb-6 pb-4 border-b border-slate-800/50">
-                                        <h3 className="text-lg font-bold text-white">Quick Capture</h3>
-                                        <p className="text-sm text-slate-400">Save a new resource with intelligent auto-fetching</p>
+                                    <div className="mb-4 pb-4 border-b border-slate-100">
+                                        <h3 className="text-base font-bold text-slate-900">Quick Capture</h3>
+                                        <p className="text-xs text-slate-500 mt-0.5">Save a new resource with intelligent auto-fetching</p>
                                     </div>
                                 )}
                                 <div className="flex items-center gap-3">
-                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${isExpanded
+                                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-300 flex-shrink-0 ${isExpanded
                                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/25 rotate-90'
                                         : 'bg-slate-100 text-slate-400'
                                         }`}>
-                                        <Plus className="w-5 h-5" />
+                                        <Plus className="w-4 h-4" />
                                     </div>
                                     <input
                                         type="text"
                                         placeholder="Add a URL or resource..."
                                         value={url}
-                                        onChange={(e) => {
-                                            const newVal = e.target.value;
-                                            setUrl(newVal);
-                                            if (!newVal) setTitle("");
-                                        }}
+                                        onChange={(e) => { const v = e.target.value; setUrl(v); if (!v) setTitle(""); }}
                                         onPaste={handleUrlPaste}
                                         onFocus={() => setIsExpanded(true)}
-                                        className={`flex-1 text-base font-medium bg-transparent border-none focus:outline-none focus:ring-0 ${isExpanded ? 'text-white placeholder-slate-500' : 'text-slate-900 placeholder-slate-400'}`}
+                                        className={`flex-1 text-sm font-medium bg-transparent border-none focus:outline-none ${isExpanded ? 'text-slate-900 placeholder-slate-400' : 'text-slate-600 placeholder-slate-400'}`}
                                     />
                                     {!isExpanded && (
-                                        <span className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded-md">
-                                            Ctrl+K
-                                        </span>
+                                        <kbd className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded-md font-mono border border-slate-200">Ctrl+K</kbd>
                                     )}
                                 </div>
                             </div>
 
                             {isExpanded && (
-                                <div className="px-4 pb-5 border-t border-slate-800/50 animate-fade-in">
-                                    <div className="pt-4 space-y-4">
+                                <div className="px-5 pb-5 border-t border-slate-100 animate-fade-in">
+                                    <div className="pt-4 space-y-3">
                                         <div className="form-group">
-                                            <label className="form-label text-slate-400">URL</label>
+                                            <label className="form-label">URL</label>
                                             <input
                                                 type="url"
                                                 value={url}
-                                                onChange={(e) => {
-                                                    const newVal = e.target.value;
-                                                    setUrl(newVal);
-                                                    if (!newVal) setTitle("");
-                                                }}
+                                                onChange={(e) => { const v = e.target.value; setUrl(v); if (!v) setTitle(""); }}
                                                 onPaste={handleUrlPaste}
                                                 onBlur={handleUrlBlur}
                                                 placeholder="https://example.com"
-                                                className="w-full bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+                                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
                                                 required
                                             />
                                         </div>
-
                                         <div className="form-group">
-                                            <label className="form-label text-slate-400">Title</label>
+                                            <label className="form-label">Title</label>
                                             <input
                                                 type="text"
                                                 value={title}
                                                 onChange={(e) => setTitle(e.target.value)}
-                                                placeholder="Fetching title..."
-                                                className="w-full bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all font-semibold"
+                                                placeholder="Auto-fetching title..."
+                                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-medium"
                                             />
                                         </div>
-
-                                        <div className="grid grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-2 gap-3">
                                             <div className="form-group">
-                                                <label className="form-label text-slate-400">Category</label>
+                                                <label className="form-label">Category</label>
                                                 <input
                                                     type="text"
                                                     value={category}
                                                     onChange={(e) => setCategory(e.target.value)}
                                                     placeholder="e.g., Frontend"
-                                                    className="w-full bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+                                                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
                                                 />
                                             </div>
                                             <div className="form-group">
-                                                <label className="form-label text-slate-400">Tags</label>
+                                                <label className="form-label">Tags</label>
                                                 <input
                                                     type="text"
                                                     value={tags}
                                                     onChange={(e) => setTags(e.target.value)}
                                                     placeholder="react, tutorial"
-                                                    className="w-full bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+                                                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
                                                 />
                                             </div>
                                         </div>
-
                                         <div className="form-group">
-                                            <label className="form-label text-slate-400">Notes</label>
+                                            <label className="form-label">Notes</label>
                                             <textarea
                                                 value={note}
                                                 onChange={(e) => setNote(e.target.value)}
-                                                placeholder="Why are you saving this? What should you remember?"
-                                                rows={3}
-                                                className="w-full bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all resize-none"
+                                                placeholder="Why are you saving this?"
+                                                rows={2}
+                                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all resize-none"
                                             />
                                         </div>
-
-                                        <div className="flex items-center justify-between pt-2">
-                                            <div className="flex items-center gap-2 text-xs text-slate-500">
-                                                <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                                        <div className="flex items-center justify-between pt-1">
+                                            <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                                                <Sparkles className="w-3 h-3 text-indigo-400" />
                                                 <span>Intelligent extraction active</span>
                                             </div>
                                             <div className="flex items-center gap-3">
-                                                <button onClick={() => setIsExpanded(false)} className="px-4 py-2 text-sm font-medium text-slate-400 hover:text-white transition-colors">
+                                                <button
+                                                    onClick={() => setIsExpanded(false)}
+                                                    className="text-sm font-medium text-slate-500 hover:text-slate-700 transition-colors"
+                                                >
                                                     Cancel
                                                 </button>
-                                                <button onClick={save} disabled={loading || !url} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 text-white text-sm font-bold rounded-xl shadow-lg shadow-indigo-500/20 transition-all flex items-center gap-2">
-                                                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                                                    Save Resource
+                                                <button
+                                                    onClick={save}
+                                                    disabled={loading || !url}
+                                                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 disabled:text-slate-400 text-white text-sm font-bold rounded-xl transition-all flex items-center gap-2 shadow-sm shadow-indigo-500/20"
+                                                >
+                                                    {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                                                    Save
                                                 </button>
                                             </div>
                                         </div>
@@ -675,220 +640,257 @@ export default function Dashboard({ pinnedOnly = false, archivedOnly = false, tr
                             )}
 
                             {(error || successMessage) && (
-                                <div className={`px-4 py-3 border-t flex items-center gap-2 text-sm font-medium ${error
+                                <div className={`px-5 py-3 border-t flex items-center gap-2 text-xs font-semibold ${error
                                     ? 'bg-red-50 text-red-600 border-red-100'
-                                    : 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                                    : 'bg-emerald-50 text-emerald-700 border-emerald-100'
                                     }`}>
-                                    {error ? <X className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+                                    {error ? <X className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
                                     {error || successMessage}
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        /* Mode Header Tile */
+                        <div className="col-span-12 xl:col-span-7 bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-center shadow-sm">
+                            <h2 className="text-2xl font-black text-slate-900 tracking-tight">
+                                {pinnedOnly ? "Pinned Resources" : archivedOnly ? "Archived" : "Trash"}
+                            </h2>
+                            <p className="text-sm text-slate-500 mt-1.5">
+                                {pinnedOnly
+                                    ? "Your most important resources, always at the top"
+                                    : archivedOnly
+                                        ? "Resources you've set aside for later"
+                                        : "Items waiting to be permanently deleted"}
+                            </p>
+                            {trashOnly && (
+                                <div className="mt-3 flex items-center gap-2 text-xs text-amber-600">
+                                    <AlertTriangle className="w-3.5 h-3.5" />
+                                    <span>Items are permanently deleted after 7 days</span>
                                 </div>
                             )}
                         </div>
                     )}
 
-                    {/* Category Pills */}
-                    <div className="pb-2">
+                    {/* Stats 2×2 Bento Tiles */}
+                    <div className="col-span-12 xl:col-span-5 grid grid-cols-2 gap-4">
+                        <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col justify-between min-h-[96px] shadow-sm">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Saved</p>
+                            <div>
+                                <p className="text-4xl font-black text-slate-900 tabular-nums leading-none">{resources.length}</p>
+                                <p className="text-[10px] text-slate-400 mt-1">total resources</p>
+                            </div>
+                        </div>
+                        <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col justify-between min-h-[96px] shadow-sm">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Pinned</p>
+                            <div>
+                                <p className="text-4xl font-black text-indigo-600 tabular-nums leading-none">{resources.filter(r => r.isPinned).length}</p>
+                                <p className="text-[10px] text-slate-400 mt-1">important items</p>
+                            </div>
+                        </div>
+                        <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col justify-between min-h-[96px] shadow-sm">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Categories</p>
+                            <div>
+                                <p className="text-4xl font-black text-emerald-600 tabular-nums leading-none">{availableCategories.length}</p>
+                                <p className="text-[10px] text-slate-400 mt-1">unique types</p>
+                            </div>
+                        </div>
+                        <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col justify-between min-h-[96px] shadow-sm">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tags</p>
+                            <div>
+                                <p className="text-4xl font-black text-violet-600 tabular-nums leading-none">{availableTags.length}</p>
+                                <p className="text-[10px] text-slate-400 mt-1">unique labels</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ── ROW 2: Category Pills ── */}
+                    <div className="col-span-12 bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm">
                         <CategoryPills
                             categories={availableCategories}
                             selectedCategories={filters.categories}
-                            onSelect={(category) => {
+                            onSelect={(cat) => {
                                 setFilters(prev => {
-                                    if (category === "All") return { ...prev, categories: [] };
-                                    const isSelected = prev.categories.includes(category);
+                                    if (cat === "All") return { ...prev, categories: [] };
+                                    const isSelected = prev.categories.includes(cat);
                                     return {
                                         ...prev,
                                         categories: isSelected
-                                            ? prev.categories.filter(c => c !== category)
-                                            : [...prev.categories, category]
+                                            ? prev.categories.filter(c => c !== cat)
+                                            : [...prev.categories, cat]
                                     };
                                 });
                             }}
                         />
                     </div>
 
-                    {/* Trash Info Banner */}
-                    {trashOnly && (
-                        <div className="mb-8 p-4 bg-amber-50 border border-amber-100 rounded-xl flex items-start gap-4 animate-fade-in shadow-sm">
-                            <div className="p-2 rounded-lg bg-amber-100 text-amber-600">
-                                <AlertTriangle className="w-5 h-5" />
-                            </div>
-                            <div>
-                                <h4 className="text-sm font-bold text-amber-900">The Safety Net (Trash)</h4>
-                                <p className="text-sm text-amber-700/80 leading-relaxed">
-                                    Resources in Trash will be **permanently deleted after 7 days**. You can restore them anytime before that or delete them manually.
-                                </p>
-                            </div>
-                        </div>
-                    )}
+                    {/* ── ROW 3: Resources List (8 cols) + Filter Panel (4 cols) ── */}
 
-                    {/* Resources Header */}
-                    <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-200/60">
-                        <div className="flex items-center gap-4">
-                            <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
-                                {pinnedOnly ? "Pinned Resources" : archivedOnly ? "Archived Resources" : trashOnly ? "Trash" : "Resources"}
-                            </h2>
-                            <span className="px-3 py-1 rounded-full bg-indigo-50 text-indigo-600 text-sm font-semibold border border-indigo-100/50 shadow-sm">
-                                {filteredResources.length}
-                            </span>
-                            <button
-                                onClick={() => setSelectedIds(new Set(selectedIds.size === filteredResources.length ? [] : filteredResources.map(r => r.id)))}
-                                className="text-sm font-medium text-indigo-600 hover:text-indigo-700 hover:underline transition-all"
-                            >
-                                {selectedIds.size === filteredResources.length ? "Deselect All" : "Select All"}
-                            </button>
-                        </div>
-                        <div className="flex items-center gap-3">
-                            <select
-                                value={sortBy}
-                                onChange={(e) => setSortBy(e.target.value)}
-                                className="text-sm border border-slate-200 bg-white text-slate-600 font-medium rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all"
-                            >
-                                <option value="newest">Most Recent</option>
-                                <option value="oldest">Oldest First</option>
-                                <option value="az">A-Z</option>
-                            </select>
+                    {/* Resources Tile */}
+                    <div className="col-span-12 xl:col-span-8">
+                        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
 
-                            <button
-                                onClick={() => setViewMode("grid")}
-                                className={`p-2 rounded-md transition-all ${viewMode === "grid" ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
-                            >
-                                <LayoutGrid className="w-4 h-4" />
-                            </button>
-                            <button
-                                onClick={() => setViewMode("list")}
-                                className={`p-2 rounded-md transition-all ${viewMode === "list" ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
-                            >
-                                <List className="w-4 h-4" />
-                            </button>
-                        </div>
-
-                        {trashOnly && filteredResources.length > 0 && (
-                            <button
-                                onClick={handleEmptyTrash}
-                                className="flex items-center gap-2 px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 rounded-xl text-sm font-bold transition-all ml-2"
-                            >
-                                <Trash2 className="w-4 h-4" />
-                                Empty Trash
-                            </button>
-                        )}
-                    </div>
-
-                    {/* Resources Area with Stable Height */}
-                    <div className="min-h-[600px]">
-                        {loading ? (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                {[1, 2, 3, 4].map((i) => (
-                                    <div key={i} className="bg-white rounded-xl border border-slate-200 p-6 animate-pulse">
-                                        <div className="flex gap-4">
-                                            <div className="w-11 h-11 rounded-xl bg-slate-100 flex-shrink-0"></div>
-                                            <div className="flex-1 space-y-3">
-                                                <div className="h-4 bg-slate-100 rounded w-3/4"></div>
-                                                <div className="h-3 bg-slate-50 rounded w-1/2"></div>
-                                            </div>
-                                        </div>
-                                        <div className="mt-6 space-y-2">
-                                            <div className="h-3 bg-slate-50 rounded w-full"></div>
-                                            <div className="h-3 bg-slate-50 rounded w-5/6"></div>
-                                        </div>
-                                        <div className="mt-8 flex gap-2 pt-3 border-t border-slate-50">
-                                            <div className="h-5 bg-slate-100 rounded-md w-16"></div>
-                                            <div className="h-5 bg-slate-100 rounded-md w-20"></div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : filteredResources.length === 0 ? (
-                            <div className="empty-state bg-white rounded-2xl border border-dashed border-slate-300 py-12">
-                                <div className="empty-state-icon mb-4">
-                                    <Link2 className="w-6 h-6 text-slate-400" />
+                            {/* Tile Header */}
+                            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                                <div className="flex items-center gap-2.5">
+                                    <h2 className="text-sm font-black text-slate-900 tracking-tight">
+                                        {pinnedOnly ? "Pinned" : archivedOnly ? "Archived" : trashOnly ? "Trash" : "Resources"}
+                                    </h2>
+                                    <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-[10px] font-bold border border-indigo-100 tabular-nums">
+                                        {filteredResources.length}
+                                    </span>
                                 </div>
-                                <h3 className="text-lg font-bold text-slate-900 mb-2">
-                                    {searchQuery ? "No search results" : "This View is Empty"}
-                                </h3>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => setSelectedIds(new Set(
+                                            selectedIds.size === filteredResources.length && filteredResources.length > 0
+                                                ? []
+                                                : filteredResources.map(r => r.id)
+                                        ))}
+                                        className="text-xs font-bold text-slate-400 hover:text-indigo-600 transition-colors px-2 py-1"
+                                    >
+                                        {selectedIds.size === filteredResources.length && filteredResources.length > 0
+                                            ? "Deselect All"
+                                            : "Select All"}
+                                    </button>
+                                    <select
+                                        value={sortBy}
+                                        onChange={(e) => setSortBy(e.target.value)}
+                                        className="text-xs bg-white border border-slate-200 text-slate-600 font-medium rounded-lg px-3 py-1.5 focus:ring-1 focus:ring-indigo-500/30 focus:border-indigo-500 cursor-pointer transition-all outline-none"
+                                    >
+                                        <option value="newest">Newest</option>
+                                        <option value="oldest">Oldest</option>
+                                        <option value="az">A–Z</option>
+                                    </select>
+                                </div>
+                            </div>
 
-                                {filters.categories.length > 0 || filters.tags.length > 0 ? (
-                                    <div className="max-w-md mx-auto mb-8 px-6">
-                                        <p className="text-sm text-slate-500 leading-relaxed">
-                                            This is a "Smart View". To see resources here, simply tag any existing resource with:
-                                        </p>
-                                        <div className="mt-4 flex flex-wrap justify-center gap-2">
-                                            {filters.categories.map(c => (
-                                                <span key={c} className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-xs font-bold border border-indigo-100 uppercase">
-                                                    {c}
-                                                </span>
-                                            ))}
-                                            {filters.tags.map(t => (
-                                                <span key={t} className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold border border-slate-200 lowercase">
-                                                    #{t}
-                                                </span>
-                                            ))}
+                            {/* Column Headers */}
+                            <div className="hidden md:flex items-center px-5 py-2.5 text-[9px] font-black uppercase tracking-[0.18em] text-slate-400 border-b border-slate-100/80">
+                                <div className="w-[60px] shrink-0">Status</div>
+                                <div className="w-[260px] md:w-[300px] shrink-0">Resource</div>
+                                <div className="flex-1 px-6 hidden xl:block">Notes</div>
+                                <div className="w-[140px] shrink-0 px-4">Category</div>
+                                <div className="w-[90px] shrink-0 px-2 hidden lg:block text-right">Timeline</div>
+                                <div className="w-[80px] shrink-0 text-right">Actions</div>
+                            </div>
+
+                            {/* Resource Items */}
+                            <div className="min-h-[420px] p-3">
+                                {loading ? (
+                                    <div className="space-y-2">
+                                        {[1, 2, 3, 4].map((i) => (
+                                            <div key={i} className="bg-slate-100 rounded-xl h-14 animate-pulse" />
+                                        ))}
+                                    </div>
+                                ) : filteredResources.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center py-16 text-center">
+                                        <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
+                                            <Link2 className="w-5 h-5 text-slate-400" />
                                         </div>
+                                        <h3 className="text-sm font-bold text-slate-700 mb-1">
+                                            {searchQuery ? "No search results" : "This View is Empty"}
+                                        </h3>
+                                        {filters.categories.length > 0 || filters.tags.length > 0 ? (
+                                            <div className="mt-3 flex flex-wrap justify-center gap-1.5">
+                                                {filters.categories.map(c => (
+                                                    <span key={c} className="px-2.5 py-1 bg-indigo-50 text-indigo-600 rounded-full text-xs font-bold border border-indigo-100 uppercase">{c}</span>
+                                                ))}
+                                                {filters.tags.map(t => (
+                                                    <span key={t} className="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-medium border border-slate-200">#{t}</span>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-xs text-slate-500 max-w-xs mt-1">
+                                                {searchQuery
+                                                    ? "Try adjusting your search"
+                                                    : "Start building your knowledge base by adding your first resource"}
+                                            </p>
+                                        )}
+                                        {!searchQuery && filters.categories.length === 0 && filters.tags.length === 0 && !pinnedOnly && !archivedOnly && !trashOnly && (
+                                            <button
+                                                onClick={() => setIsExpanded(true)}
+                                                className="mt-4 flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-xl transition-all shadow-sm"
+                                            >
+                                                <Plus className="w-3.5 h-3.5" />
+                                                Add Resource
+                                            </button>
+                                        )}
                                     </div>
                                 ) : (
-                                    <p className="text-sm text-slate-500 max-w-sm mx-auto mb-8">
-                                        {searchQuery
-                                            ? "Try adjusting your search terms"
-                                            : "Start building your knowledge base by adding your first resource"}
-                                    </p>
-                                )}
-
-                                {!searchQuery && filters.categories.length === 0 && filters.tags.length === 0 && (
-                                    <button onClick={() => setIsExpanded(true)} className="btn-primary">
-                                        <Plus className="w-4 h-4" />
-                                        Add Resource
-                                    </button>
-                                )}
-                            </div>
-                        ) : (
-                            <div className={`grid gap-6 ${viewMode === "grid" ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
-                                {filteredResources.map((resource, idx) => (
-                                    <div key={resource.id} className="animate-fade-in" style={{ animationDelay: idx < 2 ? '0ms' : `${idx * 50}ms` }}>
-                                        <ResourceCard
-                                            resource={resource}
-                                            onEdit={setEditingResource}
-                                            onDelete={handleDelete}
-                                            onArchive={handleArchive}
-                                            onPin={handleTogglePin}
-                                            isSelected={selectedIds.has(resource.id)}
-                                            onSelect={toggleSelection}
-                                            isSelectionMode={selectedIds.size > 0}
-                                            isTrashMode={trashOnly}
-                                            onRestore={handleRestore}
-                                            onPermanentDelete={handlePermanentDelete}
-                                            availableCollections={collections}
-                                            onAddToCollection={handleAddToCollection}
-                                            onRemoveFromCollection={handleRemoveFromCollection}
-                                        />
+                                    <div className="flex flex-col gap-1.5">
+                                        {paginatedResources.map((resource, idx) => (
+                                            <div
+                                                key={resource.id}
+                                                className="animate-fade-in"
+                                                style={{ animationDelay: idx < 3 ? '0ms' : `${idx * 30}ms` }}
+                                            >
+                                                <ResourceCard
+                                                    resource={resource}
+                                                    onEdit={setEditingResource}
+                                                    onDelete={handleDelete}
+                                                    onArchive={handleArchive}
+                                                    onPin={handleTogglePin}
+                                                    isSelected={selectedIds.has(resource.id)}
+                                                    onSelect={toggleSelection}
+                                                    isSelectionMode={selectedIds.size > 0}
+                                                    isTrashMode={trashOnly}
+                                                    onRestore={handleRestore}
+                                                    onPermanentDelete={handlePermanentDelete}
+                                                    availableCollections={collections}
+                                                    onAddToCollection={handleAddToCollection}
+                                                    onRemoveFromCollection={handleRemoveFromCollection}
+                                                />
+                                            </div>
+                                        ))}
                                     </div>
-                                ))}
+                                )}
                             </div>
-                        )}
-                    </div>
-                </div>
 
-                {/* Right Column */}
-                <div className="hidden xl:block xl:col-span-4 space-y-6">
-                    <div className="sticky top-28 space-y-6">
-
-
-
-                        {/* Filter Panel */}
-                        <FilterPanel
-                            onFiltersChange={setFilters}
-                            availableCategories={availableCategories}
-                            availableTags={availableTags}
-                        />
-
-                        {/* Footer */}
-                        <div className="text-center pt-4">
-                            <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
-                                KnowHub v1.0
-                            </p>
+                            {/* Pagination */}
+                            {totalPages > 1 && (
+                                <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100">
+                                    <p className="text-xs text-slate-500 tabular-nums">
+                                        {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filteredResources.length)} of {filteredResources.length}
+                                    </p>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                            disabled={currentPage === 1}
+                                            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                                        >
+                                            Previous
+                                        </button>
+                                        <span className="text-xs font-bold text-slate-500 px-1 tabular-nums">
+                                            {currentPage} / {totalPages}
+                                        </span>
+                                        <button
+                                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                            disabled={currentPage === totalPages}
+                                            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                                        >
+                                            Next
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
+
+                    {/* Filter Panel Tile */}
+                    <div className="hidden xl:block xl:col-span-4">
+                        <div className="sticky top-20">
+                            <FilterPanel
+                                onFiltersChange={setFilters}
+                                availableCategories={availableCategories}
+                                availableTags={availableTags}
+                            />
+                        </div>
+                    </div>
+
                 </div>
             </main>
 
+            {/* ── Modals ── */}
             {editingResource && (
                 <EditResourceModal
                     resource={editingResource}
@@ -912,7 +914,7 @@ export default function Dashboard({ pinnedOnly = false, archivedOnly = false, tr
                 isOpen={showBulkDeleteConfirm}
                 onClose={() => setShowBulkDeleteConfirm(false)}
                 onConfirm={confirmBulkDelete}
-                title="Delete Resource"
+                title="Delete Resources"
                 message={`Are you sure you want to delete ${selectedIds.size} resources? This action cannot be undone.`}
                 confirmLabel={`Delete ${selectedIds.size} Items`}
             />
@@ -922,86 +924,80 @@ export default function Dashboard({ pinnedOnly = false, archivedOnly = false, tr
                 onClose={() => setShowEmptyTrashConfirm(false)}
                 onConfirm={confirmEmptyTrash}
                 title="Empty Trash"
-                message="Are you sure you want to empty the trash? All resources will be permanently deleted. This action cannot be undone."
+                message="Are you sure you want to empty the trash? All resources will be permanently deleted."
                 confirmLabel="Empty Trash"
             />
 
-            {/* Bulk Action Bar */}
-            {
-                selectedIds.size > 0 && (
-                    <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 animate-slide-up">
-                        <div className="bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-2xl shadow-indigo-500/20 border border-slate-800 flex items-center gap-6 min-w-[400px]">
-                            <div className="flex items-center gap-3 pr-6 border-r border-slate-800">
-                                <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-sm">
-                                    {selectedIds.size}
-                                </div>
-                                <span className="text-sm font-medium text-slate-300">Items Selected</span>
+            {/* ── Bulk Action Bar (stays dark — contrast on white bg) ── */}
+            {selectedIds.size > 0 && (
+                <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 animate-slide-up">
+                    <div className="bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-2xl shadow-black/20 border border-slate-800 flex items-center gap-6 min-w-[400px]">
+                        <div className="flex items-center gap-3 pr-6 border-r border-slate-700">
+                            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-sm tabular-nums">
+                                {selectedIds.size}
                             </div>
+                            <span className="text-sm font-medium text-slate-300">Selected</span>
+                        </div>
 
-                            <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={handleBulkArchive}
+                                className="flex items-center gap-2 px-4 py-2 rounded-xl hover:bg-slate-800 text-sm font-semibold transition-all text-slate-200"
+                            >
+                                <Archive className="w-4 h-4" />
+                                {showArchived ? "Restore" : "Archive"}
+                            </button>
+                            <button
+                                onClick={handleBulkDelete}
+                                className="flex items-center gap-2 px-4 py-2 rounded-xl hover:bg-red-500/10 text-red-400 text-sm font-semibold transition-all"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                                Delete
+                            </button>
+
+                            <div className="relative">
                                 <button
-                                    onClick={handleBulkArchive}
-                                    className="flex items-center gap-2 px-4 py-2 rounded-xl hover:bg-slate-800 text-sm font-semibold transition-all text-slate-200"
+                                    onClick={() => { if (!showBulkFolderMenu) loadCollections(); setShowBulkFolderMenu(!showBulkFolderMenu); }}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all text-sm font-semibold ${showBulkFolderMenu ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 text-slate-200'}`}
                                 >
-                                    <Archive className="w-4 h-4" />
-                                    {showArchived ? "Restore" : "Archive"}
+                                    <Folder className="w-4 h-4" />
+                                    Add to View
                                 </button>
-                                <button
-                                    onClick={handleBulkDelete}
-                                    className="flex items-center gap-2 px-4 py-2 rounded-xl hover:bg-red-500/10 text-red-400 text-sm font-semibold transition-all"
-                                >
-                                    <Trash2 className="w-4 h-4" />
-                                    Delete
-                                </button>
-
-                                <div className="relative">
-                                    <button
-                                        onClick={() => {
-                                            if (!showBulkFolderMenu) loadCollections();
-                                            setShowBulkFolderMenu(!showBulkFolderMenu);
-                                        }}
-                                        className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all text-sm font-semibold ${showBulkFolderMenu ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 text-slate-200'}`}
-                                    >
-                                        <Folder className="w-4 h-4" />
-                                        Add to View
-                                    </button>
-
-                                    {showBulkFolderMenu && (
-                                        <div className="absolute bottom-full left-0 mb-2 w-48 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl py-1 animate-fade-in divide-y divide-slate-800">
-                                            <div className="px-3 py-2">
-                                                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Select View</p>
-                                            </div>
-                                            <div className="max-h-60 overflow-y-auto">
-                                                {collections.map(col => (
-                                                    <button
-                                                        key={col.id}
-                                                        onClick={() => handleBulkAddToCollection(col.id)}
-                                                        className="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
-                                                    >
-                                                        {col.name}
-                                                    </button>
-                                                ))}
-                                                {collections.length === 0 && (
-                                                    <div className="px-3 py-2 text-xs text-slate-500 italic">No views created</div>
-                                                )}
-                                            </div>
+                                {showBulkFolderMenu && (
+                                    <div className="absolute bottom-full left-0 mb-2 w-48 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl py-1 animate-fade-in divide-y divide-slate-800">
+                                        <div className="px-3 py-2">
+                                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Select View</p>
                                         </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="ml-auto pl-6 border-l border-slate-800">
-                                <button
-                                    onClick={() => setSelectedIds(new Set())}
-                                    className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-all"
-                                >
-                                    <X className="w-5 h-5" />
-                                </button>
+                                        <div className="max-h-60 overflow-y-auto">
+                                            {collections.map(col => (
+                                                <button
+                                                    key={col.id}
+                                                    onClick={() => handleBulkAddToCollection(col.id)}
+                                                    className="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+                                                >
+                                                    {col.name}
+                                                </button>
+                                            ))}
+                                            {collections.length === 0 && (
+                                                <div className="px-3 py-2 text-xs text-slate-500 italic">No views created</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
+
+                        <div className="ml-auto pl-6 border-l border-slate-700">
+                            <button
+                                onClick={() => setSelectedIds(new Set())}
+                                className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-all"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
                     </div>
-                )
-            }
+                </div>
+            )}
         </div>
     );
 }

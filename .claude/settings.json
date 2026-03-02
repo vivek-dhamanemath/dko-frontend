@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//e/DKO/dko-backend/**)",
+      "Read(//e/DKO/dko-backend//**)"
+    ]
+  }
+}

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/src/components/Sidebar";
+import { getMe, User } from "@/src/services/authService";
 
 export default function DashboardLayout({
     children,
@@ -12,16 +13,24 @@ export default function DashboardLayout({
     const router = useRouter();
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [user, setUser] = useState<User | null>(null);
 
     useEffect(() => {
         const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
 
         if (!token) {
             router.push("/login");
-        } else {
-            setIsAuthenticated(true);
+            setLoading(false);
+            return;
         }
-        setLoading(false);
+
+        setIsAuthenticated(true);
+        getMe()
+            .then(setUser)
+            .catch(() => {
+                // User fetch failed but auth token is valid — keep going
+            })
+            .finally(() => setLoading(false));
     }, [router]);
 
     const handleLogout = () => {
@@ -45,7 +54,7 @@ export default function DashboardLayout({
         <div className="flex min-h-screen bg-slate-50">
             {/* Sidebar - Fixed Left */}
             <div className="hidden lg:block fixed inset-y-0 left-0 z-50">
-                <Sidebar onLogout={handleLogout} />
+                <Sidebar onLogout={handleLogout} user={user} />
             </div>
 
             {/* Main Content - With left margin for sidebar */}
