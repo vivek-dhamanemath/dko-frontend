@@ -13,12 +13,16 @@ import {
     Archive,
     Trash2,
     AlertTriangle,
-    Folder
+    Folder,
+    SlidersHorizontal,
+    ChevronDown,
+    ArrowUpDown
 } from "lucide-react";
 import FilterPanel, { FilterState } from "@/src/components/FilterPanel";
 import CategoryPills from "@/src/components/CategoryPills";
 import ResourceCard from "@/src/components/ResourceCard";
 import EditResourceModal from "@/src/components/EditResourceModal";
+import ResourceDetailPanel from "@/src/components/ResourceDetailPanel";
 import ConfirmationModal from "@/src/components/ConfirmationModal";
 import { resourceService, Resource } from "@/src/services/resourceService";
 import collectionService, { Collection } from "@/src/services/collectionService";
@@ -47,6 +51,7 @@ export default function Dashboard({ pinnedOnly = false, archivedOnly = false, tr
     const [successMessage, setSuccessMessage] = useState("");
     const [searchQuery, setSearchQuery] = useState("");
     const [editingResource, setEditingResource] = useState<Resource | null>(null);
+    const [viewingResource, setViewingResource] = useState<Resource | null>(null);
     const showArchived = archivedOnly;
     const showTrash = trashOnly;
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -55,6 +60,11 @@ export default function Dashboard({ pinnedOnly = false, archivedOnly = false, tr
     const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
     const [showEmptyTrashConfirm, setShowEmptyTrashConfirm] = useState(false);
     const [showBulkFolderMenu, setShowBulkFolderMenu] = useState(false);
+
+    // UI State — new
+    const [showFilterPanel, setShowFilterPanel] = useState(false);
+    const [showSortMenu, setShowSortMenu] = useState(false);
+    const sortMenuRef = useRef<HTMLDivElement>(null);
 
     // Filter State
     const currentCollectionId = searchParams.get("collectionId") || "";
@@ -112,7 +122,7 @@ export default function Dashboard({ pinnedOnly = false, archivedOnly = false, tr
 
     useEffect(() => {
         loadResources();
-    }, [archivedOnly, trashOnly, filters, currentCollectionId]);
+    }, [archivedOnly, trashOnly, currentCollectionId]);
 
     useEffect(() => {
         loadCollections();
@@ -131,6 +141,19 @@ export default function Dashboard({ pinnedOnly = false, archivedOnly = false, tr
     useEffect(() => {
         setCurrentPage(1);
     }, [searchQuery, filters, currentCollectionId, archivedOnly, trashOnly]);
+
+    // Close sort menu on outside click
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (sortMenuRef.current && !sortMenuRef.current.contains(event.target as Node)) {
+                setShowSortMenu(false);
+            }
+        }
+        if (showSortMenu) {
+            document.addEventListener("mousedown", handleClickOutside);
+        }
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [showSortMenu]);
 
 
     const loadCollections = async () => {
@@ -151,10 +174,10 @@ export default function Dashboard({ pinnedOnly = false, archivedOnly = false, tr
                 data = await resourceService.getTrash();
             } else {
                 data = await resourceService.getFiltered({
-                    categories: filters.categories,
-                    tags: filters.tags,
-                    dateRange: filters.dateRange,
-                    sources: filters.sources,
+                    categories: [],
+                    tags: [],
+                    dateRange: "",
+                    sources: [],
                     isArchived: showArchived,
                     collectionId: currentCollectionId || undefined
                 });
@@ -490,292 +513,313 @@ export default function Dashboard({ pinnedOnly = false, archivedOnly = false, tr
         currentPage * PAGE_SIZE
     );
 
+    const sortLabels: Record<string, string> = { newest: "Newest", oldest: "Oldest", az: "A–Z" };
+
+    const activeFilterCount =
+        filters.tags.length +
+        filters.sources.length +
+        (filters.dateRange ? 1 : 0);
+
     return (
         <div className="flex flex-col min-h-screen bg-slate-50">
 
-            {/* ── Sticky Top Header ── */}
-            <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-xl border-b border-slate-200 shadow-sm">
-                <div className="px-6 lg:px-8 h-14 flex items-center gap-6">
-                    <div className="flex-1 max-w-xl">
-                        <div className="relative group">
-                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                            <input
-                                type="text"
-                                placeholder="Search resources, tags, or URLs..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="block w-full pl-10 pr-4 py-2 bg-slate-100/80 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
-                            />
-                        </div>
-                    </div>
-                </div>
-            </header>
-
-            {/* ── Bento Grid Layout ── */}
+            {/* ── Main Content ── */}
             <main className="flex-1 px-6 lg:px-8 py-5 max-w-[1600px] mx-auto w-full">
-                <div className="grid grid-cols-12 gap-4">
 
-                    {/* ── ROW 1: Quick Capture (7 cols) + Stats 2×2 (5 cols) ── */}
-
-                    {/* Quick Capture Tile */}
-                    {!pinnedOnly && !archivedOnly && !trashOnly ? (
-                        <div
-                            ref={formRef}
-                            className={`col-span-12 xl:col-span-7 bg-white border rounded-2xl transition-all duration-300 overflow-hidden shadow-sm ${isExpanded
-                                ? 'border-indigo-400 shadow-lg shadow-indigo-500/8'
-                                : 'border-slate-200 hover:border-slate-300'
-                                }`}
-                        >
-                            <div className="p-5">
-                                {isExpanded && (
-                                    <div className="mb-4 pb-4 border-b border-slate-100">
-                                        <h3 className="text-base font-bold text-slate-900">Quick Capture</h3>
-                                        <p className="text-xs text-slate-500 mt-0.5">Save a new resource with intelligent auto-fetching</p>
-                                    </div>
-                                )}
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-300 flex-shrink-0 ${isExpanded
-                                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/25 rotate-90'
-                                        : 'bg-slate-100 text-slate-400'
-                                        }`}>
-                                        <Plus className="w-4 h-4" />
-                                    </div>
-                                    <input
-                                        type="text"
-                                        placeholder="Add a URL or resource..."
-                                        value={url}
-                                        onChange={(e) => { const v = e.target.value; setUrl(v); if (!v) setTitle(""); }}
-                                        onPaste={handleUrlPaste}
-                                        onFocus={() => setIsExpanded(true)}
-                                        className={`flex-1 text-sm font-medium bg-transparent border-none focus:outline-none ${isExpanded ? 'text-slate-900 placeholder-slate-400' : 'text-slate-600 placeholder-slate-400'}`}
-                                    />
-                                    {!isExpanded && (
-                                        <kbd className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded-md font-mono border border-slate-200">Ctrl+K</kbd>
-                                    )}
-                                </div>
-                            </div>
-
+                {/* ── Quick Capture — compact slim bar ── */}
+                {!pinnedOnly && !archivedOnly && !trashOnly && (
+                    <div
+                        ref={formRef}
+                        className={`mb-4 bg-white border rounded-2xl transition-all duration-300 overflow-hidden shadow-sm ${isExpanded
+                            ? 'border-indigo-400 shadow-lg shadow-indigo-500/8'
+                            : 'border-slate-200 hover:border-slate-300'
+                            }`}
+                    >
+                        <div className={isExpanded ? "p-5" : "px-4 py-2.5"}>
                             {isExpanded && (
-                                <div className="px-5 pb-5 border-t border-slate-100 animate-fade-in">
-                                    <div className="pt-4 space-y-3">
+                                <div className="mb-4 pb-4 border-b border-slate-100">
+                                    <h3 className="text-base font-bold text-slate-900">Quick Capture</h3>
+                                    <p className="text-xs text-slate-500 mt-0.5">Save a new resource with intelligent auto-fetching</p>
+                                </div>
+                            )}
+                            <div className="flex items-center gap-3">
+                                <div className={`rounded-xl flex items-center justify-center transition-all duration-300 flex-shrink-0 ${isExpanded
+                                    ? 'w-9 h-9 bg-indigo-600 text-white shadow-lg shadow-indigo-500/25 rotate-90'
+                                    : 'w-7 h-7 bg-slate-100 text-slate-400'
+                                    }`}>
+                                    <Plus className={isExpanded ? "w-4 h-4" : "w-3.5 h-3.5"} />
+                                </div>
+                                <input
+                                    type="text"
+                                    placeholder="Add a URL or resource..."
+                                    value={url}
+                                    onChange={(e) => { const v = e.target.value; setUrl(v); if (!v) setTitle(""); }}
+                                    onPaste={handleUrlPaste}
+                                    onFocus={() => setIsExpanded(true)}
+                                    className={`flex-1 text-sm font-medium bg-transparent border-none focus:outline-none ${isExpanded ? 'text-slate-900 placeholder-slate-400' : 'text-slate-600 placeholder-slate-400'}`}
+                                />
+                                {!isExpanded && (
+                                    <kbd className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded font-mono border border-slate-200">Ctrl+K</kbd>
+                                )}
+                            </div>
+                        </div>
+
+                        {isExpanded && (
+                            <div className="px-5 pb-5 border-t border-slate-100 animate-fade-in">
+                                <div className="pt-4 space-y-3">
+                                    <div className="form-group">
+                                        <label className="form-label">URL</label>
+                                        <input
+                                            type="url"
+                                            value={url}
+                                            onChange={(e) => { const v = e.target.value; setUrl(v); if (!v) setTitle(""); }}
+                                            onPaste={handleUrlPaste}
+                                            onBlur={handleUrlBlur}
+                                            placeholder="https://example.com"
+                                            className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
+                                            required
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label className="form-label">Title</label>
+                                        <input
+                                            type="text"
+                                            value={title}
+                                            onChange={(e) => setTitle(e.target.value)}
+                                            placeholder="Auto-fetching title..."
+                                            className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-medium"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
                                         <div className="form-group">
-                                            <label className="form-label">URL</label>
-                                            <input
-                                                type="url"
-                                                value={url}
-                                                onChange={(e) => { const v = e.target.value; setUrl(v); if (!v) setTitle(""); }}
-                                                onPaste={handleUrlPaste}
-                                                onBlur={handleUrlBlur}
-                                                placeholder="https://example.com"
-                                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
-                                                required
-                                            />
-                                        </div>
-                                        <div className="form-group">
-                                            <label className="form-label">Title</label>
+                                            <label className="form-label">Category</label>
                                             <input
                                                 type="text"
-                                                value={title}
-                                                onChange={(e) => setTitle(e.target.value)}
-                                                placeholder="Auto-fetching title..."
-                                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-medium"
+                                                value={category}
+                                                onChange={(e) => setCategory(e.target.value)}
+                                                placeholder="e.g., Frontend"
+                                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
                                             />
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div className="form-group">
-                                                <label className="form-label">Category</label>
-                                                <input
-                                                    type="text"
-                                                    value={category}
-                                                    onChange={(e) => setCategory(e.target.value)}
-                                                    placeholder="e.g., Frontend"
-                                                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
-                                                />
-                                            </div>
-                                            <div className="form-group">
-                                                <label className="form-label">Tags</label>
-                                                <input
-                                                    type="text"
-                                                    value={tags}
-                                                    onChange={(e) => setTags(e.target.value)}
-                                                    placeholder="react, tutorial"
-                                                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
-                                                />
-                                            </div>
                                         </div>
                                         <div className="form-group">
-                                            <label className="form-label">Notes</label>
-                                            <textarea
-                                                value={note}
-                                                onChange={(e) => setNote(e.target.value)}
-                                                placeholder="Why are you saving this?"
-                                                rows={2}
-                                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all resize-none"
+                                            <label className="form-label">Tags</label>
+                                            <input
+                                                type="text"
+                                                value={tags}
+                                                onChange={(e) => setTags(e.target.value)}
+                                                placeholder="react, tutorial"
+                                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
                                             />
                                         </div>
-                                        <div className="flex items-center justify-between pt-1">
-                                            <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-                                                <Sparkles className="w-3 h-3 text-indigo-400" />
-                                                <span>Intelligent extraction active</span>
-                                            </div>
-                                            <div className="flex items-center gap-3">
-                                                <button
-                                                    onClick={() => setIsExpanded(false)}
-                                                    className="text-sm font-medium text-slate-500 hover:text-slate-700 transition-colors"
-                                                >
-                                                    Cancel
-                                                </button>
-                                                <button
-                                                    onClick={save}
-                                                    disabled={loading || !url}
-                                                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 disabled:text-slate-400 text-white text-sm font-bold rounded-xl transition-all flex items-center gap-2 shadow-sm shadow-indigo-500/20"
-                                                >
-                                                    {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                                                    Save
-                                                </button>
-                                            </div>
+                                    </div>
+                                    <div className="form-group">
+                                        <label className="form-label">Notes</label>
+                                        <textarea
+                                            value={note}
+                                            onChange={(e) => setNote(e.target.value)}
+                                            placeholder="Why are you saving this?"
+                                            rows={2}
+                                            className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all resize-none"
+                                        />
+                                    </div>
+                                    <div className="flex items-center justify-between pt-1">
+                                        <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                                            <Sparkles className="w-3 h-3 text-indigo-400" />
+                                            <span>Intelligent extraction active</span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <button
+                                                onClick={() => setIsExpanded(false)}
+                                                className="text-sm font-medium text-slate-500 hover:text-slate-700 transition-colors"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                onClick={save}
+                                                disabled={loading || !url}
+                                                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 disabled:text-slate-400 text-white text-sm font-bold rounded-xl transition-all flex items-center gap-2 shadow-sm shadow-indigo-500/20"
+                                            >
+                                                {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                                                Save
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
-                            )}
+                            </div>
+                        )}
 
-                            {(error || successMessage) && (
-                                <div className={`px-5 py-3 border-t flex items-center gap-2 text-xs font-semibold ${error
-                                    ? 'bg-red-50 text-red-600 border-red-100'
-                                    : 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                                    }`}>
-                                    {error ? <X className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
-                                    {error || successMessage}
-                                </div>
-                            )}
-                        </div>
-                    ) : (
-                        /* Mode Header Tile */
-                        <div className="col-span-12 xl:col-span-7 bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-center shadow-sm">
-                            <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-                                {pinnedOnly ? "Pinned Resources" : archivedOnly ? "Archived" : "Trash"}
-                            </h2>
-                            <p className="text-sm text-slate-500 mt-1.5">
-                                {pinnedOnly
-                                    ? "Your most important resources, always at the top"
-                                    : archivedOnly
-                                        ? "Resources you've set aside for later"
-                                        : "Items waiting to be permanently deleted"}
-                            </p>
-                            {trashOnly && (
-                                <div className="mt-3 flex items-center gap-2 text-xs text-amber-600">
-                                    <AlertTriangle className="w-3.5 h-3.5" />
-                                    <span>Items are permanently deleted after 7 days</span>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Stats 2×2 Bento Tiles */}
-                    <div className="col-span-12 xl:col-span-5 grid grid-cols-2 gap-4">
-                        <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col justify-between min-h-[96px] shadow-sm">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Saved</p>
-                            <div>
-                                <p className="text-4xl font-black text-slate-900 tabular-nums leading-none">{resources.length}</p>
-                                <p className="text-[10px] text-slate-400 mt-1">total resources</p>
+                        {(error || successMessage) && (
+                            <div className={`px-5 py-3 border-t flex items-center gap-2 text-xs font-semibold ${error
+                                ? 'bg-red-50 text-red-600 border-red-100'
+                                : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                }`}>
+                                {error ? <X className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+                                {error || successMessage}
                             </div>
-                        </div>
-                        <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col justify-between min-h-[96px] shadow-sm">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Pinned</p>
-                            <div>
-                                <p className="text-4xl font-black text-indigo-600 tabular-nums leading-none">{resources.filter(r => r.isPinned).length}</p>
-                                <p className="text-[10px] text-slate-400 mt-1">important items</p>
-                            </div>
-                        </div>
-                        <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col justify-between min-h-[96px] shadow-sm">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Categories</p>
-                            <div>
-                                <p className="text-4xl font-black text-emerald-600 tabular-nums leading-none">{availableCategories.length}</p>
-                                <p className="text-[10px] text-slate-400 mt-1">unique types</p>
-                            </div>
-                        </div>
-                        <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col justify-between min-h-[96px] shadow-sm">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tags</p>
-                            <div>
-                                <p className="text-4xl font-black text-violet-600 tabular-nums leading-none">{availableTags.length}</p>
-                                <p className="text-[10px] text-slate-400 mt-1">unique labels</p>
-                            </div>
-                        </div>
+                        )}
                     </div>
+                )}
 
-                    {/* ── ROW 2: Category Pills ── */}
-                    <div className="col-span-12 bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm">
-                        <CategoryPills
-                            categories={availableCategories}
-                            selectedCategories={filters.categories}
-                            onSelect={(cat) => {
-                                setFilters(prev => {
-                                    if (cat === "All") return { ...prev, categories: [] };
-                                    const isSelected = prev.categories.includes(cat);
-                                    return {
-                                        ...prev,
-                                        categories: isSelected
-                                            ? prev.categories.filter(c => c !== cat)
-                                            : [...prev.categories, cat]
-                                    };
-                                });
-                            }}
-                        />
+                {/* ── Trash warning banner ── */}
+                {trashOnly && (
+                    <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700 font-medium">
+                        <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span>Items in trash are permanently deleted after 7 days</span>
+                        <button
+                            onClick={() => setShowEmptyTrashConfirm(true)}
+                            className="ml-auto text-red-600 font-bold hover:text-red-700 transition-colors"
+                        >
+                            Empty Trash
+                        </button>
                     </div>
+                )}
 
-                    {/* ── ROW 3: Resources List (8 cols) + Filter Panel (4 cols) ── */}
+                {/* ── Resources + Filter Panel ── */}
+                <div className="relative">
 
-                    {/* Resources Tile */}
-                    <div className="col-span-12 xl:col-span-8">
+                    {/* Resources Tile — always full width */}
+                    <div>
                         <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
 
-                            {/* Tile Header */}
-                            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-                                <div className="flex items-center gap-2.5">
-                                    <h2 className="text-sm font-black text-slate-900 tracking-tight">
-                                        {pinnedOnly ? "Pinned" : archivedOnly ? "Archived" : trashOnly ? "Trash" : "Resources"}
-                                    </h2>
-                                    <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-[10px] font-bold border border-indigo-100 tabular-nums">
-                                        {filteredResources.length}
-                                    </span>
+                            {/* Tile Header: Search + Title + Sort + Filters toggle */}
+                            <div className="px-5 py-3 border-b border-slate-100 space-y-3">
+                                {/* Row 1: Title + Actions */}
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2.5">
+                                        <h2 className="text-sm font-black text-slate-900 tracking-tight">
+                                            {pinnedOnly ? "Pinned" : archivedOnly ? "Archived" : trashOnly ? "Trash" : "Resources"}
+                                        </h2>
+                                        <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-[10px] font-bold border border-indigo-100 tabular-nums">
+                                            {filteredResources.length}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        {/* Select All — only visible when in selection mode */}
+                                        {selectedIds.size > 0 && (
+                                            <button
+                                                onClick={() => setSelectedIds(new Set(
+                                                    selectedIds.size === filteredResources.length && filteredResources.length > 0
+                                                        ? []
+                                                        : filteredResources.map(r => r.id)
+                                                ))}
+                                                className="text-xs font-bold text-slate-400 hover:text-indigo-600 transition-colors px-2 py-1"
+                                            >
+                                                {selectedIds.size === filteredResources.length && filteredResources.length > 0
+                                                    ? "Deselect All"
+                                                    : "Select All"}
+                                            </button>
+                                        )}
+
+                                        {/* Custom Sort Dropdown */}
+                                        <div className="relative" ref={sortMenuRef}>
+                                            <button
+                                                onClick={() => setShowSortMenu(!showSortMenu)}
+                                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${showSortMenu
+                                                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                                                    : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-800'
+                                                    }`}
+                                            >
+                                                <ArrowUpDown className="w-3 h-3" />
+                                                {sortLabels[sortBy]}
+                                                <ChevronDown className={`w-3 h-3 transition-transform ${showSortMenu ? 'rotate-180' : ''}`} />
+                                            </button>
+                                            {showSortMenu && (
+                                                <div className="absolute right-0 top-full mt-1.5 w-36 bg-white rounded-xl border border-slate-200 shadow-xl z-50 py-1">
+                                                    {Object.entries(sortLabels).map(([value, label]) => (
+                                                        <button
+                                                            key={value}
+                                                            onClick={() => { setSortBy(value); setShowSortMenu(false); }}
+                                                            className={`w-full text-left px-3 py-2 text-xs font-medium transition-colors ${sortBy === value
+                                                                ? 'bg-indigo-50 text-indigo-700 font-semibold'
+                                                                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                                                                }`}
+                                                        >
+                                                            {label}
+                                                            {sortBy === value && <Check className="w-3 h-3 inline ml-2 text-indigo-600" />}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Filter Panel Toggle + Dropdown */}
+                                        <div className="relative">
+                                            <button
+                                                onClick={() => setShowFilterPanel(!showFilterPanel)}
+                                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${showFilterPanel || activeFilterCount > 0
+                                                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                                                    : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-800'
+                                                    }`}
+                                            >
+                                                <SlidersHorizontal className="w-3 h-3" />
+                                                Filters
+                                                {activeFilterCount > 0 && (
+                                                    <span className="w-4 h-4 rounded-full bg-indigo-600 text-white text-[9px] font-bold flex items-center justify-center">
+                                                        {activeFilterCount}
+                                                    </span>
+                                                )}
+                                            </button>
+
+                                            {showFilterPanel && (
+                                                <>
+                                                    <div className="fixed inset-0 z-30" onClick={() => setShowFilterPanel(false)} />
+                                                    <div className="absolute right-0 top-full mt-2 z-40 w-72 bg-white border border-slate-200 rounded-2xl shadow-xl shadow-slate-900/10 overflow-hidden">
+                                                        <div className="flex items-center justify-between px-4 pt-3 pb-1">
+                                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Filters</span>
+                                                            <button
+                                                                onClick={() => setShowFilterPanel(false)}
+                                                                className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+                                                            >
+                                                                <X className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        </div>
+                                                        <FilterPanel
+                                                            onFiltersChange={setFilters}
+                                                            availableCategories={availableCategories}
+                                                            availableTags={availableTags}
+                                                        />
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        onClick={() => setSelectedIds(new Set(
-                                            selectedIds.size === filteredResources.length && filteredResources.length > 0
-                                                ? []
-                                                : filteredResources.map(r => r.id)
-                                        ))}
-                                        className="text-xs font-bold text-slate-400 hover:text-indigo-600 transition-colors px-2 py-1"
-                                    >
-                                        {selectedIds.size === filteredResources.length && filteredResources.length > 0
-                                            ? "Deselect All"
-                                            : "Select All"}
-                                    </button>
-                                    <select
-                                        value={sortBy}
-                                        onChange={(e) => setSortBy(e.target.value)}
-                                        className="text-xs bg-white border border-slate-200 text-slate-600 font-medium rounded-lg px-3 py-1.5 focus:ring-1 focus:ring-indigo-500/30 focus:border-indigo-500 cursor-pointer transition-all outline-none"
-                                    >
-                                        <option value="newest">Newest</option>
-                                        <option value="oldest">Oldest</option>
-                                        <option value="az">A–Z</option>
-                                    </select>
+
+                                {/* Row 2: Search bar */}
+                                <div className="relative group">
+                                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search resources, tags, or URLs..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="block w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
+                                    />
                                 </div>
+
+                                {/* Row 3: Category pills inline */}
+                                {availableCategories.length > 0 && (
+                                    <CategoryPills
+                                        categories={availableCategories}
+                                        selectedCategories={filters.categories}
+                                        onSelect={(cat) => {
+                                            setFilters(prev => {
+                                                if (cat === "All") return { ...prev, categories: [] };
+                                                const isSelected = prev.categories.includes(cat);
+                                                return {
+                                                    ...prev,
+                                                    categories: isSelected
+                                                        ? prev.categories.filter(c => c !== cat)
+                                                        : [...prev.categories, cat]
+                                                };
+                                            });
+                                        }}
+                                    />
+                                )}
                             </div>
 
-                            {/* Column Headers */}
-                            <div className="hidden md:flex items-center px-5 py-2.5 text-[9px] font-black uppercase tracking-[0.18em] text-slate-400 border-b border-slate-100/80">
-                                <div className="w-[60px] shrink-0">Status</div>
-                                <div className="w-[260px] md:w-[300px] shrink-0">Resource</div>
-                                <div className="flex-1 px-6 hidden xl:block">Notes</div>
-                                <div className="w-[140px] shrink-0 px-4">Category</div>
-                                <div className="w-[90px] shrink-0 px-2 hidden lg:block text-right">Timeline</div>
-                                <div className="w-[80px] shrink-0 text-right">Actions</div>
-                            </div>
-
-                            {/* Resource Items */}
-                            <div className="min-h-[420px] p-3">
+                            {/* Resource Items — no column headers, no fixed min-height */}
+                            <div className="p-3">
                                 {loading ? (
                                     <div className="space-y-2">
                                         {[1, 2, 3, 4].map((i) => (
@@ -817,30 +861,26 @@ export default function Dashboard({ pinnedOnly = false, archivedOnly = false, tr
                                         )}
                                     </div>
                                 ) : (
-                                    <div className="flex flex-col gap-1.5">
-                                        {paginatedResources.map((resource, idx) => (
-                                            <div
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                                        {paginatedResources.map((resource) => (
+                                            <ResourceCard
                                                 key={resource.id}
-                                                className="animate-fade-in"
-                                                style={{ animationDelay: idx < 3 ? '0ms' : `${idx * 30}ms` }}
-                                            >
-                                                <ResourceCard
-                                                    resource={resource}
-                                                    onEdit={setEditingResource}
-                                                    onDelete={handleDelete}
-                                                    onArchive={handleArchive}
-                                                    onPin={handleTogglePin}
-                                                    isSelected={selectedIds.has(resource.id)}
-                                                    onSelect={toggleSelection}
-                                                    isSelectionMode={selectedIds.size > 0}
-                                                    isTrashMode={trashOnly}
-                                                    onRestore={handleRestore}
-                                                    onPermanentDelete={handlePermanentDelete}
-                                                    availableCollections={collections}
-                                                    onAddToCollection={handleAddToCollection}
-                                                    onRemoveFromCollection={handleRemoveFromCollection}
-                                                />
-                                            </div>
+                                                resource={resource}
+                                                onEdit={setEditingResource}
+                                                onDelete={handleDelete}
+                                                onArchive={handleArchive}
+                                                onPin={handleTogglePin}
+                                                isSelected={selectedIds.has(resource.id)}
+                                                onSelect={toggleSelection}
+                                                isSelectionMode={selectedIds.size > 0}
+                                                isTrashMode={trashOnly}
+                                                onRestore={handleRestore}
+                                                onPermanentDelete={handlePermanentDelete}
+                                                availableCollections={collections}
+                                                onAddToCollection={handleAddToCollection}
+                                                onRemoveFromCollection={handleRemoveFromCollection}
+                                                onView={setViewingResource}
+                                            />
                                         ))}
                                     </div>
                                 )}
@@ -873,17 +913,6 @@ export default function Dashboard({ pinnedOnly = false, archivedOnly = false, tr
                                     </div>
                                 </div>
                             )}
-                        </div>
-                    </div>
-
-                    {/* Filter Panel Tile */}
-                    <div className="hidden xl:block xl:col-span-4">
-                        <div className="sticky top-20">
-                            <FilterPanel
-                                onFiltersChange={setFilters}
-                                availableCategories={availableCategories}
-                                availableTags={availableTags}
-                            />
                         </div>
                     </div>
 
@@ -928,7 +957,18 @@ export default function Dashboard({ pinnedOnly = false, archivedOnly = false, tr
                 confirmLabel="Empty Trash"
             />
 
-            {/* ── Bulk Action Bar (stays dark — contrast on white bg) ── */}
+            {/* ── Resource Detail Panel ── */}
+            <ResourceDetailPanel
+                resource={viewingResource}
+                isOpen={!!viewingResource}
+                onClose={() => setViewingResource(null)}
+                onEdit={(r) => { setViewingResource(null); setEditingResource(r); }}
+                onDelete={(id) => { setViewingResource(null); handleDelete(id); }}
+                onArchive={handleArchive}
+                onPin={handleTogglePin}
+            />
+
+            {/* ── Bulk Action Bar ── */}
             {selectedIds.size > 0 && (
                 <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 animate-slide-up">
                     <div className="bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-2xl shadow-black/20 border border-slate-800 flex items-center gap-6 min-w-[400px]">

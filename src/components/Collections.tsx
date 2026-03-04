@@ -3,12 +3,12 @@
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-    Bookmark,
     Plus,
     Trash2,
     Check,
-    ChevronRight,
-    Loader2
+    Loader2,
+    ChevronDown,
+    Folder
 } from "lucide-react";
 import collectionService, { Collection } from "../services/collectionService";
 
@@ -22,6 +22,7 @@ export default function Collections() {
     const [newName, setNewName] = useState("");
     const [hoveredId, setHoveredId] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [isExpanded, setIsExpanded] = useState(true);
 
     const currentCollectionId = searchParams.get("collectionId");
 
@@ -76,86 +77,95 @@ export default function Collections() {
     };
 
     return (
-        <div className="space-y-4">
-            {/* Header */}
-            <div className="flex items-center justify-between px-3">
-                <div className="flex items-center gap-2 text-slate-500 uppercase tracking-wider font-bold text-[10px]">
-                    <Bookmark className="w-3 h-3" />
+        <div>
+            {/* Header — toggle + add */}
+            <div className="flex items-center justify-between px-2.5 mb-1">
+                <button
+                    onClick={() => setIsExpanded(!isExpanded)}
+                    className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider hover:text-slate-600 transition-colors"
+                >
+                    <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${isExpanded ? "" : "-rotate-90"}`} />
                     <span>Collections</span>
-                </div>
+                </button>
                 <button
                     onClick={() => setShowSaveModal(true)}
-                    className="p-1 rounded-lg text-slate-500 hover:text-indigo-400 hover:bg-slate-800/50 transition-all"
+                    className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
+                    style={{ opacity: 1 }}
                     title="New Collection"
                 >
-                    <Plus className="w-4 h-4" />
+                    <Plus className="w-3.5 h-3.5" />
                 </button>
             </div>
 
             {/* List */}
-            {loading ? (
-                <div className="flex justify-center py-4">
-                    <Loader2 className="w-4 h-4 text-slate-600 animate-spin" />
-                </div>
-            ) : collections.length > 0 ? (
-                <div className="space-y-0.5">
-                    {collections.map((collection) => {
-                        const isActive = currentCollectionId === collection.id;
-                        return (
-                            <div
-                                key={collection.id}
-                                onMouseEnter={() => setHoveredId(collection.id)}
-                                onMouseLeave={() => setHoveredId(null)}
-                                className="group relative flex items-center"
-                            >
-                                <button
-                                    onClick={() => handleSelect(collection.id)}
-                                    className={`flex-1 flex items-center gap-3 px-3 py-2 rounded-xl transition-all duration-200 group-active:scale-[0.98] ${isActive
-                                        ? "bg-indigo-600/10 text-indigo-400"
-                                        : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/30"
-                                        }`}
-                                >
-                                    <div className={`w-1.5 h-1.5 rounded-full transition-colors ${isActive ? "bg-indigo-400" : "bg-slate-600 group-hover:bg-indigo-500"
-                                        }`} />
-                                    <span className="text-sm font-medium truncate">
-                                        {collection.name}
-                                    </span>
-                                </button>
-
-                                {hoveredId === collection.id && (
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleDelete(collection.id);
-                                        }}
-                                        className="absolute right-2 p-1 text-slate-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
+            {isExpanded && (
+                <>
+                    {loading ? (
+                        <div className="flex justify-center py-3">
+                            <Loader2 className="w-3.5 h-3.5 text-slate-300 animate-spin" />
+                        </div>
+                    ) : collections.length > 0 ? (
+                        <div className="space-y-px">
+                            {collections.map((collection) => {
+                                const isActive = currentCollectionId === collection.id;
+                                return (
+                                    <div
+                                        key={collection.id}
+                                        onMouseEnter={() => setHoveredId(collection.id)}
+                                        onMouseLeave={() => setHoveredId(null)}
+                                        className="group/item relative flex items-center"
                                     >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
-            ) : (
-                <div className="px-3 py-2 text-[10px] text-slate-600 font-medium italic">
-                    No folders created
-                </div>
+                                        <button
+                                            onClick={() => handleSelect(collection.id)}
+                                            className={`flex-1 flex items-center gap-2.5 pl-3 pr-8 py-[7px] rounded-lg transition-all duration-150 text-[13.5px] ${isActive
+                                                ? "bg-slate-200/80 text-slate-900 font-semibold"
+                                                : "text-slate-500 hover:bg-slate-100 hover:text-slate-800 font-medium"
+                                                }`}
+                                        >
+                                            <Folder className={`w-[16px] h-[16px] flex-shrink-0 transition-colors ${isActive ? "text-indigo-500" : "text-slate-400"}`} />
+                                            <span className="truncate">{collection.name}</span>
+                                        </button>
+
+                                        {hoveredId === collection.id && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDelete(collection.id);
+                                                }}
+                                                className="absolute right-1.5 p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-all"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <button
+                            onClick={() => setShowSaveModal(true)}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors font-medium"
+                        >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Add a collection</span>
+                        </button>
+                    )}
+                </>
             )}
 
             {/* Create Modal */}
             {showSaveModal && (
                 <div className="modal-overlay z-[100]">
-                    <div className="modal-content bg-slate-900 border border-slate-800 text-white shadow-2xl">
-                        <h3 className="text-lg font-bold mb-1">New Collection</h3>
-                        <p className="text-sm text-slate-400 mb-4">Create a folder to group resources manually.</p>
+                    <div className="modal-content bg-white border border-slate-200 text-slate-900 shadow-2xl shadow-slate-900/10">
+                        <h3 className="text-base font-bold mb-0.5">New Collection</h3>
+                        <p className="text-[13px] text-slate-500 mb-4">Create a folder to group resources manually.</p>
 
                         <input
                             type="text"
                             value={newName}
                             onChange={(e) => setNewName(e.target.value)}
                             placeholder="e.g., Backend Roadmap"
-                            className="w-full bg-slate-800 border-slate-700 text-white rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all mb-4"
+                            className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none transition-all mb-4 placeholder-slate-400"
                             autoFocus
                             onKeyDown={(e) => e.key === "Enter" && handleCreate()}
                         />
@@ -163,14 +173,14 @@ export default function Collections() {
                         <div className="flex gap-3">
                             <button
                                 onClick={() => { setShowSaveModal(false); setNewName(""); }}
-                                className="flex-1 px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-sm font-bold hover:bg-slate-700 transition-all border border-slate-700"
+                                className="flex-1 px-4 py-2 rounded-xl bg-slate-100 text-slate-600 text-sm font-semibold hover:bg-slate-200 transition-all border border-slate-200"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={handleCreate}
                                 disabled={!newName.trim() || isSaving}
-                                className="flex-1 px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-600/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                                className="flex-1 px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-500 transition-all shadow-sm shadow-indigo-600/20 disabled:opacity-50 flex items-center justify-center gap-2"
                             >
                                 {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                                 Create

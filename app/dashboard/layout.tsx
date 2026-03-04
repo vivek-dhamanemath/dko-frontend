@@ -58,7 +58,7 @@ export default function DashboardLayout({
             </div>
 
             {/* Main Content - With left margin for sidebar */}
-            <div className="flex-1 lg:ml-64">
+            <div className="flex-1 lg:ml-[260px]">
                 {children}
             </div>
         </div>

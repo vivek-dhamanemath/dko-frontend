@@ -16,6 +16,11 @@ import {
     SubstackIcon,
     ProductHuntIcon,
     WikipediaIcon,
+    GoogleIcon,
+    ChatGPTIcon,
+    VercelIcon,
+    NPMIcon,
+    SlackIcon,
     GlobeIcon
 } from '../components/icons/BrandIcons';
 
@@ -173,6 +178,51 @@ export const SOURCES: SourceConfig[] = [
         bgColor: 'bg-[#25D366]',
         icon: WhatsAppIcon,
         labelIcon: '💬'
+    },
+    {
+        id: 'chatgpt',
+        name: 'ChatGPT',
+        domains: ['chat.openai.com', 'chatgpt.com', 'openai.com'],
+        color: 'text-white',
+        bgColor: 'bg-[#10A37F]',
+        icon: ChatGPTIcon,
+        labelIcon: '🤖'
+    },
+    {
+        id: 'vercel',
+        name: 'Vercel',
+        domains: ['vercel.com', 'vercel.app'],
+        color: 'text-white',
+        bgColor: 'bg-[#000000]',
+        icon: VercelIcon,
+        labelIcon: '▲'
+    },
+    {
+        id: 'npm',
+        name: 'npm',
+        domains: ['npmjs.com', 'npmjs.org'],
+        color: 'text-white',
+        bgColor: 'bg-[#CB3837]',
+        icon: NPMIcon,
+        labelIcon: '📦'
+    },
+    {
+        id: 'slack',
+        name: 'Slack',
+        domains: ['slack.com'],
+        color: 'text-white',
+        bgColor: 'bg-[#4A154B]',
+        icon: SlackIcon,
+        labelIcon: '💬'
+    },
+    {
+        id: 'google',
+        name: 'Google',
+        domains: ['google.com', 'google.co'],
+        color: 'text-slate-900',
+        bgColor: 'bg-white border border-slate-200',
+        icon: GoogleIcon,
+        labelIcon: '🔍'
     }
 ];
 
