@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/src/components/Sidebar";
 import CommandPalette from "@/src/components/CommandPalette";
-import { getMe, User } from "@/src/services/authService";
+import { getMe, logout, User } from "@/src/services/authService";
+import { supabase } from "@/src/lib/supabase";
 
 export default function DashboardLayout({
     children,
@@ -16,25 +17,36 @@ export default function DashboardLayout({
     const router = useRouter();
 
     useEffect(() => {
-        const token = localStorage.getItem("accessToken");
-        if (!token) {
-            router.push("/login");
-            return;
-        }
-
-        getMe()
-            .then((userData) => {
-                setUser(userData);
-                setLoading(false);
-            })
-            .catch(() => {
-                localStorage.removeItem("accessToken");
+        // Check Supabase session
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            if (!session) {
                 router.push("/login");
-            });
+                return;
+            }
+
+            // Fetch app user data from backend
+            getMe()
+                .then((userData) => {
+                    setUser(userData);
+                    setLoading(false);
+                })
+                .catch(() => {
+                    router.push("/login");
+                });
+        });
+
+        // Listen for auth state changes (e.g. token refresh, sign out)
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+            if (event === "SIGNED_OUT") {
+                router.push("/login");
+            }
+        });
+
+        return () => subscription.unsubscribe();
     }, [router]);
 
-    const handleLogout = () => {
-        localStorage.removeItem("accessToken");
+    const handleLogout = async () => {
+        await logout();
         router.push("/login");
     };
 

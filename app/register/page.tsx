@@ -3,17 +3,16 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Mail, Lock, User, ArrowRight } from "lucide-react";
-
-const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+import { Mail, Lock, ArrowRight } from "lucide-react";
+import { register } from "@/src/services/authService";
 
 export default function RegisterPage() {
-    const [name, setName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
+    const [success, setSuccess] = useState(false);
     const router = useRouter();
 
     async function handleRegister(e: React.FormEvent) {
@@ -25,16 +24,13 @@ export default function RegisterPage() {
 
         setIsLoading(true);
         try {
-            const res = await fetch(`${BASE_URL}/api/auth/register`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name, email, password })
-            });
-            if (!res.ok) {
-                const errorData = await res.json().catch(() => ({}));
-                throw new Error(errorData.message || "Registration failed");
+            const data = await register(email, password);
+            // If email confirmation is enabled in Supabase, user needs to verify
+            if (data.user && !data.session) {
+                setSuccess(true);
+            } else {
+                router.push("/dashboard");
             }
-            router.push("/login?registered=true");
         } catch (error: any) {
             setError(error.message || "Registration failed. Please try again.");
         } finally {
@@ -107,14 +103,13 @@ export default function RegisterPage() {
                         </div>
                     )}
 
-                    <form onSubmit={handleRegister} className="space-y-4">
-                        <div>
-                            <label className="text-[10px] font-medium text-[#9a8b78] uppercase tracking-wider mb-1.5 block" style={{ fontFamily: "'JetBrains Mono', monospace" }}>Full Name</label>
-                            <div className="relative">
-                                <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#b8aa98]" />
-                                <input type="text" className="input-professional pl-10 py-3" placeholder="John Doe" value={name} onChange={e => setName(e.target.value)} />
-                            </div>
+                    {success && (
+                        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 text-[13px]">
+                            Check your email for a confirmation link to activate your account.
                         </div>
+                    )}
+
+                    <form onSubmit={handleRegister} className="space-y-4">
                         <div>
                             <label className="text-[10px] font-medium text-[#9a8b78] uppercase tracking-wider mb-1.5 block" style={{ fontFamily: "'JetBrains Mono', monospace" }}>Email</label>
                             <div className="relative">

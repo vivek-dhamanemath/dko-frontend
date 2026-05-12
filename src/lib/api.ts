@@ -1,17 +1,17 @@
 import axios from "axios";
+import { supabase } from "./supabase";
 
 export const api = axios.create({
     baseURL: `${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8081"}/api`,
     withCredentials: true
 });
 
-// Add request interceptor to include auth token
+// Request interceptor — attach Supabase access token
 api.interceptors.request.use(
-    (config) => {
-        // Get token from localStorage if it exists
-        const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-        if (token) {
-            config.headers.Authorization = `Bearer ${token}`;
+    async (config) => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+            config.headers.Authorization = `Bearer ${session.access_token}`;
         }
         return config;
     },
@@ -20,15 +20,17 @@ api.interceptors.request.use(
     }
 );
 
-// Add response interceptor for error handling
+// Response interceptor — handle auth errors
 api.interceptors.response.use(
     (response) => response,
     async (error) => {
-        if (error.response?.status === 401 || error.response?.status === 403) {
-            // Token expired or invalid, redirect to login
-            if (typeof window !== 'undefined') {
-                localStorage.removeItem('accessToken');
-                window.location.href = '/login';
+        if (error.response?.status === 401) {
+            // Try refreshing the session
+            const { data: { session } } = await supabase.auth.refreshSession();
+            if (!session) {
+                if (typeof window !== "undefined") {
+                    window.location.href = "/login";
+                }
             }
         }
         return Promise.reject(error);

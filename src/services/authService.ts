@@ -1,3 +1,4 @@
+import { supabase } from "@/src/lib/supabase";
 import { api } from "@/src/lib/api";
 
 export interface User {
@@ -9,18 +10,28 @@ export interface User {
 }
 
 export const login = async (email: string, password: string) => {
-    try {
-        const response = await api.post("/auth/login", { email, password });
-        if (response.data.accessToken) {
-            localStorage.setItem("accessToken", response.data.accessToken);
-        }
-        return response.data;
-    } catch (error: any) {
-        throw new Error(error.response?.data?.message || "Login failed");
-    }
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw new Error(error.message);
+    return data;
+};
+
+export const register = async (email: string, password: string) => {
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    if (error) throw new Error(error.message);
+    return data;
+};
+
+export const logout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw new Error(error.message);
 };
 
 export const getMe = async (): Promise<User> => {
     const response = await api.get<User>("/user/me");
     return response.data;
+};
+
+export const getSession = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session;
 };
