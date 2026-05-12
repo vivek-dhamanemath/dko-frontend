@@ -1,8 +1,9 @@
 import "./globals.css";
+import { ThemeProvider } from "@/src/context/ThemeContext";
 
 export const metadata = {
-    title: "Enterprise Auth | DKO",
-    description: "Secure login and registration for Developer Knowledge Organizer",
+    title: "DKO — Developer Knowledge Organizer",
+    description: "Save, organize, and search your developer resources",
 };
 
 export default function RootLayout({
@@ -12,7 +13,11 @@ export default function RootLayout({
 }) {
     return (
         <html lang="en" suppressHydrationWarning>
-            <body suppressHydrationWarning>{children}</body>
+            <body suppressHydrationWarning>
+                <ThemeProvider>
+                    {children}
+                </ThemeProvider>
+            </body>
         </html>
     )
 }

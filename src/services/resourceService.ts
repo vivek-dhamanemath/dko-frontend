@@ -8,11 +8,23 @@ export interface Resource {
     category: string;
     tags: string[];
     createdAt: string;
+    updatedAt: string;
     isArchived: boolean;
     isDeleted: boolean;
     isPinned: boolean;
     deletedAt: string | null;
+    icon: string | null;
     collections: { id: string; name: string }[];
+}
+
+export interface PaginatedResponse {
+    content: Resource[];
+    page: number;
+    size: number;
+    totalElements: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrevious: boolean;
 }
 
 export interface CreateResourceRequest {
@@ -21,6 +33,7 @@ export interface CreateResourceRequest {
     note: string;
     category: string;
     tags: string[];
+    icon?: string | null;
 }
 
 export interface UpdateResourceRequest {
@@ -29,6 +42,7 @@ export interface UpdateResourceRequest {
     note: string;
     category: string;
     tags: string[];
+    icon?: string | null;
 }
 
 export const resourceService = {
@@ -37,8 +51,25 @@ export const resourceService = {
         return response.data;
     },
 
-    getFiltered: async (filters: any) => {
-        const response = await api.post<Resource[]>("/resources/filter", filters);
+    getFiltered: async (filters: {
+        categories?: string[];
+        tags?: string[];
+        dateRange?: string;
+        sources?: string[];
+        isArchived?: boolean;
+        collectionId?: string;
+        page?: number;
+        size?: number;
+    }): Promise<PaginatedResponse> => {
+        const response = await api.post<PaginatedResponse>("/resources/filter", {
+            categories: filters.categories || [],
+            tags: filters.tags || [],
+            dateRange: filters.dateRange || "",
+            isArchived: filters.isArchived || false,
+            collectionId: filters.collectionId || null,
+            page: filters.page ?? 0,
+            size: filters.size ?? 20
+        });
         return response.data;
     },
 
@@ -104,4 +135,3 @@ export const resourceService = {
         return response.data;
     }
 };
-

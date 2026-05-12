@@ -5,13 +5,9 @@ import { api } from "@/src/lib/api";
 import { Resource, resourceService } from "@/src/services/resourceService";
 import {
     BarChart3,
-    PieChart,
     TrendingUp,
     Activity,
     Globe,
-    Github,
-    Youtube,
-    BookOpen,
     Loader2,
     Archive,
     Trash2
@@ -30,21 +26,18 @@ export default function AnalyticsPage() {
     const [stats, setStats] = useState({
         thisMonth: 0,
         categories: [] as { name: string; count: number; percentage: number }[],
-        sources: [] as { name: string; count: number; icon: any; color: string }[],
-        topTags: [] as { name: string; count: number }[]
+        sources: [] as { name: string; count: number; color: string }[],
+        topTags: [] as { name: string; count: number }[],
+        weeklyActivity: [] as { week: string; count: number }[],
     });
 
-    useEffect(() => {
-        loadData();
-    }, []);
+    useEffect(() => { loadData(); }, []);
 
     const loadData = async () => {
         try {
-            // Fetch server-computed stats (single API call for counts)
             const statsData = await resourceService.getStats();
             setServerStats(statsData);
 
-            // Fetch active resources for category/source/tag breakdown
             const response = await api.get("/resources");
             const resources: Resource[] = Array.isArray(response.data) ? response.data : [];
             processStats(resources);
@@ -57,9 +50,8 @@ export default function AnalyticsPage() {
 
     const processStats = (resources: Resource[]) => {
         const total = resources.length;
-
-        // This Month
         const now = new Date();
+
         const thisMonth = resources.filter(r => {
             const d = new Date(r.createdAt);
             return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
@@ -68,16 +60,11 @@ export default function AnalyticsPage() {
         // Categories
         const catCounts: Record<string, number> = {};
         resources.forEach(r => {
-            const cat = r.category?.trim() ? r.category.trim() : 'Uncategorized';
+            const cat = r.category?.trim() ? r.category.trim() : "Uncategorized";
             catCounts[cat] = (catCounts[cat] || 0) + 1;
         });
-
         const categories = Object.entries(catCounts)
-            .map(([name, count]) => ({
-                name,
-                count,
-                percentage: total > 0 ? Math.round((count / total) * 100) : 0
-            }))
+            .map(([name, count]) => ({ name, count, percentage: total > 0 ? Math.round((count / total) * 100) : 0 }))
             .sort((a, b) => b.count - a.count)
             .slice(0, 8);
 
@@ -85,159 +72,142 @@ export default function AnalyticsPage() {
         const sourceCounts: Record<string, number> = {};
         resources.forEach(r => {
             const url = r.url.toLowerCase();
-            let source = 'Other';
-            if (url.includes('github.com')) source = 'GitHub';
-            else if (url.includes('youtube.com') || url.includes('youtu.be')) source = 'YouTube';
-            else if (url.includes('medium.com') || url.includes('dev.to')) source = 'Articles';
-            else if (url.includes('docs') || url.includes('documentation')) source = 'Documentation';
-
+            let source = "Other";
+            if (url.includes("github.com")) source = "GitHub";
+            else if (url.includes("youtube.com") || url.includes("youtu.be")) source = "YouTube";
+            else if (url.includes("medium.com") || url.includes("dev.to")) source = "Articles";
+            else if (url.includes("docs") || url.includes("documentation")) source = "Docs";
             sourceCounts[source] = (sourceCounts[source] || 0) + 1;
         });
-
-        const sources = [
-            { name: 'GitHub', count: sourceCounts['GitHub'] || 0, icon: Github, color: 'bg-slate-900 text-white' },
-            { name: 'YouTube', count: sourceCounts['YouTube'] || 0, icon: Youtube, color: 'bg-red-600 text-white' },
-            { name: 'Articles', count: sourceCounts['Articles'] || 0, icon: BookOpen, color: 'bg-emerald-500 text-white' },
-            { name: 'Other', count: sourceCounts['Other'] || 0, icon: Globe, color: 'bg-blue-500 text-white' },
-        ].filter(s => s.count > 0).sort((a, b) => b.count - a.count);
+        const sources = Object.entries(sourceCounts)
+            .map(([name, count]) => ({ name, count, color: name === "GitHub" ? "bg-[#1f1a14]" : name === "YouTube" ? "bg-red-600" : name === "Articles" ? "bg-emerald-600" : "bg-[#9a8b78]" }))
+            .filter(s => s.count > 0)
+            .sort((a, b) => b.count - a.count);
 
         // Tags
         const tagCounts: Record<string, number> = {};
-        resources.flatMap(r => r.tags || []).forEach(t => {
-            tagCounts[t] = (tagCounts[t] || 0) + 1;
-        });
-        const topTags = Object.entries(tagCounts)
-            .map(([name, count]) => ({ name, count }))
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 8);
+        resources.flatMap(r => r.tags || []).forEach(t => { tagCounts[t] = (tagCounts[t] || 0) + 1; });
+        const topTags = Object.entries(tagCounts).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count).slice(0, 10);
 
-        setStats({ thisMonth, categories, sources, topTags });
+        // Weekly activity (last 12 weeks)
+        const weeklyActivity: { week: string; count: number }[] = [];
+        for (let i = 11; i >= 0; i--) {
+            const weekStart = new Date(now);
+            weekStart.setDate(weekStart.getDate() - i * 7);
+            const weekEnd = new Date(weekStart);
+            weekEnd.setDate(weekEnd.getDate() + 7);
+            const count = resources.filter(r => {
+                const d = new Date(r.createdAt);
+                return d >= weekStart && d < weekEnd;
+            }).length;
+            weeklyActivity.push({
+                week: weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+                count,
+            });
+        }
+
+        setStats({ thisMonth, categories, sources, topTags, weeklyActivity });
     };
 
     if (loading) {
         return (
             <div className="flex items-center justify-center h-96">
-                <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+                <Loader2 className="w-6 h-6 text-[#9a8b78] animate-spin" />
             </div>
         );
     }
 
+    const maxWeekly = Math.max(...stats.weeklyActivity.map(w => w.count), 1);
+
     return (
-        <div className="max-w-7xl mx-auto px-6 lg:px-12 py-8 space-y-8">
-            {/* Header */}
+        <div className="px-6 lg:px-8 py-5 max-w-[1600px] mx-auto w-full space-y-6">
+
+            {/* Breadcrumb */}
             <div>
-                <h1 className="text-2xl font-bold text-slate-900">Analytics Overview</h1>
-                <p className="text-slate-500">Insights into your knowledge base growth and distribution</p>
+                <span className="text-[10px] text-[#b8aa98] tracking-widest" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                    DASHBOARD / ANALYTICS
+                </span>
             </div>
 
-            {/* Overview Cards — 4 metrics */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {/* Lifetime Created */}
-                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
-                    <div className="relative z-10">
-                        <p className="text-sm font-medium text-slate-500 uppercase tracking-wider">Lifetime Created</p>
-                        <h3 className="text-3xl font-bold text-slate-900 mt-2">{serverStats.lifetime}</h3>
-                        <div className="flex items-center gap-1 mt-2 text-emerald-600 text-sm font-medium">
-                            <TrendingUp className="w-4 h-4" />
-                            <span>Never decreases</span>
+            {/* Heading */}
+            <div>
+                <h1 className="text-[2rem] leading-tight text-[#1f1a14] mb-1" style={{ fontFamily: "'DM Serif Display', Georgia, serif" }}>
+                    What you&apos;re actually <em>saving.</em>
+                </h1>
+                <span className="text-[11px] text-[#b8aa98]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                    // INSIGHTS INTO YOUR KNOWLEDGE BASE
+                </span>
+            </div>
+
+            {/* Overview Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {[
+                    { label: "LIFETIME", value: serverStats.lifetime, sub: "Total created", icon: BarChart3, color: "text-[#1f1a14]" },
+                    { label: "ACTIVE", value: serverStats.active, sub: "In knowledge base", icon: Activity, color: "text-emerald-600" },
+                    { label: "ARCHIVED", value: serverStats.archived, sub: "Cold storage", icon: Archive, color: "text-amber-600" },
+                    { label: "TRASH", value: serverStats.deleted, sub: "Recoverable", icon: Trash2, color: "text-red-500" },
+                ].map((card) => (
+                    <div key={card.label} className="bg-white border border-[#ebe4db] rounded-lg p-5">
+                        <p className="text-[10px] text-[#b8aa98] tracking-widest mb-2" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{card.label}</p>
+                        <h3 className="text-3xl font-semibold text-[#1f1a14]" style={{ fontFamily: "'DM Serif Display', Georgia, serif" }}>{card.value}</h3>
+                        <div className={`flex items-center gap-1 mt-1.5 text-[11px] font-medium ${card.color}`}>
+                            <card.icon className="w-3.5 h-3.5" />
+                            <span>{card.sub}</span>
                         </div>
                     </div>
-                    <div className="absolute right-0 top-0 p-6 opacity-5">
-                        <BarChart3 className="w-24 h-24" />
+                ))}
+            </div>
+
+            {/* Highlight cards */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="bg-[#1f1a14] p-6 rounded-lg text-white">
+                    <p className="text-[10px] text-[#8a7e72] tracking-widest mb-3" style={{ fontFamily: "'JetBrains Mono', monospace" }}>MOST ACTIVE CATEGORY</p>
+                    <div className="flex items-end gap-3">
+                        <span className="text-3xl font-semibold" style={{ fontFamily: "'DM Serif Display', Georgia, serif" }}>{stats.categories[0]?.name || "N/A"}</span>
+                        <span className="mb-1 text-[#8a7e72] text-[13px]">{stats.categories[0]?.count || 0} resources</span>
                     </div>
                 </div>
-
-                {/* Active Resources */}
-                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
-                    <div className="relative z-10">
-                        <p className="text-sm font-medium text-slate-500 uppercase tracking-wider">Active Resources</p>
-                        <h3 className="text-3xl font-bold text-slate-900 mt-2">{serverStats.active}</h3>
-                        <div className="flex items-center gap-1 mt-2 text-indigo-600 text-sm font-medium">
-                            <Activity className="w-4 h-4" />
-                            <span>In knowledge base</span>
-                        </div>
-                    </div>
-                    <div className="absolute right-0 top-0 p-6 opacity-5">
-                        <PieChart className="w-24 h-24" />
-                    </div>
-                </div>
-
-                {/* Archived */}
-                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
-                    <div className="relative z-10">
-                        <p className="text-sm font-medium text-slate-500 uppercase tracking-wider">Archived</p>
-                        <h3 className="text-3xl font-bold text-slate-900 mt-2">{serverStats.archived}</h3>
-                        <div className="flex items-center gap-1 mt-2 text-amber-600 text-sm font-medium">
-                            <Archive className="w-4 h-4" />
-                            <span>Stored away</span>
-                        </div>
-                    </div>
-                    <div className="absolute right-0 top-0 p-6 opacity-5">
-                        <Archive className="w-24 h-24" />
-                    </div>
-                </div>
-
-                {/* In Trash */}
-                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
-                    <div className="relative z-10">
-                        <p className="text-sm font-medium text-slate-500 uppercase tracking-wider">In Trash</p>
-                        <h3 className="text-3xl font-bold text-slate-900 mt-2">{serverStats.deleted}</h3>
-                        <div className="flex items-center gap-1 mt-2 text-red-500 text-sm font-medium">
-                            <Trash2 className="w-4 h-4" />
-                            <span>Recoverable</span>
-                        </div>
-                    </div>
-                    <div className="absolute right-0 top-0 p-6 opacity-5">
-                        <Trash2 className="w-24 h-24" />
+                <div className="bg-[#1f1a14] p-6 rounded-lg text-white">
+                    <p className="text-[10px] text-[#8a7e72] tracking-widest mb-3" style={{ fontFamily: "'JetBrains Mono', monospace" }}>ADDED THIS MONTH</p>
+                    <div className="flex items-end gap-3">
+                        <span className="text-3xl font-semibold" style={{ fontFamily: "'DM Serif Display', Georgia, serif" }}>{stats.thisMonth}</span>
+                        <span className="mb-1 text-[#8a7e72] text-[13px]">new resources</span>
                     </div>
                 </div>
             </div>
 
-            {/* Most Active Category + Added This Month */}
+            {/* Activity chart */}
+            <div className="bg-white border border-[#ebe4db] rounded-lg p-5">
+                <h3 className="text-[13px] font-semibold text-[#1f1a14] mb-4">Activity — Last 12 Weeks</h3>
+                <div className="flex items-end gap-1.5 h-32">
+                    {stats.weeklyActivity.map((week, i) => (
+                        <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                            <div
+                                className="w-full bg-[#1f1a14] rounded-sm transition-all hover:bg-[#3d3429] min-h-[2px]"
+                                style={{ height: `${(week.count / maxWeekly) * 100}%` }}
+                                title={`${week.week}: ${week.count} resources`}
+                            />
+                            {i % 3 === 0 && (
+                                <span className="text-[8px] text-[#b8aa98] whitespace-nowrap" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{week.week}</span>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-gradient-to-br from-indigo-600 to-violet-700 p-6 rounded-2xl shadow-lg text-white relative overflow-hidden">
-                    <div className="relative z-10">
-                        <h3 className="text-lg font-semibold opacity-90">Most Active Category</h3>
-                        <div className="mt-4 flex items-end gap-3">
-                            <span className="text-4xl font-bold">{stats.categories[0]?.name || 'N/A'}</span>
-                            <span className="mb-1 opacity-75">{stats.categories[0]?.count || 0} resources</span>
-                        </div>
-                    </div>
-                    <div className="absolute right-0 bottom-0 opacity-10">
-                        <Activity className="w-48 h-48 -mr-10 -mb-10" />
-                    </div>
-                </div>
-
-                <div className="bg-gradient-to-br from-emerald-600 to-teal-700 p-6 rounded-2xl shadow-lg text-white relative overflow-hidden">
-                    <div className="relative z-10">
-                        <h3 className="text-lg font-semibold opacity-90">Added This Month</h3>
-                        <div className="mt-4 flex items-end gap-3">
-                            <span className="text-4xl font-bold">{stats.thisMonth}</span>
-                            <span className="mb-1 opacity-75">new resources</span>
-                        </div>
-                    </div>
-                    <div className="absolute right-0 bottom-0 opacity-10">
-                        <TrendingUp className="w-48 h-48 -mr-10 -mb-10" />
-                    </div>
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Category Distribution */}
-                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                    <h3 className="font-semibold text-slate-900 mb-6">Category Distribution</h3>
-                    <div className="space-y-4">
+                <div className="bg-white border border-[#ebe4db] rounded-lg p-5">
+                    <h3 className="text-[13px] font-semibold text-[#1f1a14] mb-4">Category Distribution</h3>
+                    <div className="space-y-3">
                         {stats.categories.map((cat) => (
                             <div key={cat.name}>
-                                <div className="flex justify-between text-sm mb-1.5">
-                                    <span className="font-medium text-slate-700">{cat.name}</span>
-                                    <span className="text-slate-500">{cat.count} ({cat.percentage}%)</span>
+                                <div className="flex justify-between text-[12px] mb-1">
+                                    <span className="font-medium text-[#5c4f3f]">{cat.name}</span>
+                                    <span className="text-[#9a8b78]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{cat.count} ({cat.percentage}%)</span>
                                 </div>
-                                <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                                    <div
-                                        className="h-full bg-indigo-500 rounded-full"
-                                        style={{ width: `${cat.percentage}%` }}
-                                    ></div>
+                                <div className="w-full h-2 bg-[#f5f0eb] rounded-full overflow-hidden">
+                                    <div className="h-full bg-[#1f1a14] rounded-full transition-all" style={{ width: `${cat.percentage}%` }} />
                                 </div>
                             </div>
                         ))}
@@ -245,35 +215,35 @@ export default function AnalyticsPage() {
                 </div>
 
                 {/* Top Sources */}
-                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                    <h3 className="font-semibold text-slate-900 mb-6">Top Sources</h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {stats.sources.map((source) => {
-                            const Icon = source.icon;
-                            return (
-                                <div key={source.name} className="flex items-center gap-4 p-4 rounded-xl bg-slate-50 border border-slate-100">
-                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${source.color}`}>
-                                        <Icon className="w-5 h-5" />
-                                    </div>
-                                    <div>
-                                        <p className="font-semibold text-slate-900">{source.name}</p>
-                                        <p className="text-sm text-slate-500">{source.count} resources</p>
+                <div className="bg-white border border-[#ebe4db] rounded-lg p-5">
+                    <h3 className="text-[13px] font-semibold text-[#1f1a14] mb-4">Top Sources</h3>
+                    <div className="space-y-3">
+                        {stats.sources.map((source) => (
+                            <div key={source.name} className="flex items-center gap-3">
+                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-white text-[10px] font-bold ${source.color}`}>
+                                    {source.name.slice(0, 2)}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-[13px] font-medium text-[#1f1a14]">{source.name}</p>
+                                    <div className="w-full h-1.5 bg-[#f5f0eb] rounded-full overflow-hidden mt-1">
+                                        <div className={`h-full rounded-full ${source.color}`} style={{ width: `${(source.count / (stats.sources[0]?.count || 1)) * 100}%` }} />
                                     </div>
                                 </div>
-                            );
-                        })}
+                                <span className="text-[12px] text-[#9a8b78] font-medium tabular-nums" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{source.count}</span>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </div>
 
-            {/* Tag Cloud */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                <h3 className="font-semibold text-slate-900 mb-6">Popular Tags</h3>
+            {/* Popular Tags */}
+            <div className="bg-white border border-[#ebe4db] rounded-lg p-5">
+                <h3 className="text-[13px] font-semibold text-[#1f1a14] mb-4">Popular Tags</h3>
                 <div className="flex flex-wrap gap-2">
                     {stats.topTags.map((tag) => (
-                        <div key={tag.name} className="px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-sm font-medium text-slate-600 transition-colors cursor-default">
+                        <div key={tag.name} className="px-3 py-1.5 bg-[#f5f0eb] hover:bg-[#ebe4db] rounded-md text-[12px] font-medium text-[#5c4f3f] transition-colors cursor-default border border-[#ebe4db]">
                             #{tag.name}
-                            <span className="ml-2 opacity-50 text-xs">{tag.count}</span>
+                            <span className="ml-2 text-[#b8aa98] text-[10px]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{tag.count}</span>
                         </div>
                     ))}
                 </div>

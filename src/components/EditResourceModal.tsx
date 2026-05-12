@@ -1,8 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Check, X, Loader2, Sparkles } from "lucide-react";
+import { Check, X, Loader2, Sparkles, Plus } from "lucide-react";
 import { Resource, UpdateResourceRequest } from "../services/resourceService";
+import IconPicker from "./IconPicker";
+import CategoryColorPicker from "./CategoryColorPicker";
+import { getCategoryColorClasses, CATEGORY_COLOR_DOTS, CategoryColorMap } from "../services/categoryColorService";
 
 interface EditResourceModalProps {
     resource: Resource;
@@ -10,6 +13,8 @@ interface EditResourceModalProps {
     onClose: () => void;
     onSave: (id: string, data: UpdateResourceRequest) => Promise<void>;
     availableCategories: string[];
+    categoryColors?: CategoryColorMap;
+    onSetCategoryColor?: (category: string, color: string) => void;
 }
 
 export default function EditResourceModal({
@@ -17,14 +22,18 @@ export default function EditResourceModal({
     isOpen,
     onClose,
     onSave,
-    availableCategories
+    availableCategories,
+    categoryColors,
+    onSetCategoryColor
 }: EditResourceModalProps) {
     const [title, setTitle] = useState(resource.title);
     const [url, setUrl] = useState(resource.url);
     const [category, setCategory] = useState(resource.category);
     const [note, setNote] = useState(resource.note || "");
     const [tags, setTags] = useState<string>(resource.tags?.join(", ") || "");
+    const [icon, setIcon] = useState<string | null>(resource.icon || null);
     const [isSaving, setIsSaving] = useState(false);
+    const [showCustomCat, setShowCustomCat] = useState(false);
 
     useEffect(() => {
         if (isOpen) {
@@ -33,6 +42,8 @@ export default function EditResourceModal({
             setCategory(resource.category);
             setNote(resource.note || "");
             setTags(resource.tags?.join(", ") || "");
+            setIcon(resource.icon || null);
+            setShowCustomCat(false);
         }
     }, [isOpen, resource]);
 
@@ -41,20 +52,11 @@ export default function EditResourceModal({
     const handleSave = async () => {
         if (!title.trim() || !url.trim() || !category.trim()) return;
 
-        const parsedTags = tags
-            .split(",")
-            .map(t => t.trim())
-            .filter(Boolean);
+        const parsedTags = tags.split(",").map(t => t.trim()).filter(Boolean);
 
         try {
             setIsSaving(true);
-            await onSave(resource.id, {
-                title,
-                url,
-                category,
-                note,
-                tags: parsedTags
-            });
+            await onSave(resource.id, { title, url, category, note, tags: parsedTags, icon });
             onClose();
         } catch (error) {
             console.error("Failed to update resource", error);
@@ -65,121 +67,131 @@ export default function EditResourceModal({
 
     return (
         <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
-            <div className="bg-white border border-indigo-400 rounded-2xl w-full max-w-lg shadow-lg shadow-indigo-500/8 overflow-hidden">
-                {/* Header — matches Quick Capture expanded header */}
-                <div className="p-5 pb-0">
-                    <div className="mb-4 pb-4 border-b border-slate-100 flex items-center justify-between">
-                        <div>
-                            <h3 className="text-base font-bold text-slate-900">Edit Resource</h3>
-                            <p className="text-xs text-slate-500 mt-0.5">Update your saved resource details</p>
-                        </div>
-                        <button
-                            onClick={onClose}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-                        >
-                            <X className="w-4 h-4" />
-                        </button>
+            <div className="bg-white border border-[#ebe4db] rounded-xl w-full max-w-lg shadow-2xl overflow-hidden animate-modal-pop max-h-[90vh] flex flex-col">
+                {/* Header */}
+                <div className="px-5 pt-5 pb-4 border-b border-[#ebe4db] flex items-center justify-between shrink-0">
+                    <div>
+                        <h3 className="text-[17px] font-semibold text-[#1f1a14]" style={{ fontFamily: "'DM Serif Display', serif" }}>Edit Resource</h3>
+                        <p className="text-[11px] text-[#9a8b78] mt-0.5">Update your saved resource details</p>
                     </div>
+                    <button onClick={onClose} className="icon-btn">
+                        <X className="w-4 h-4" />
+                    </button>
                 </div>
 
-                {/* Body — same input styles as Quick Capture */}
-                <div className="px-5 pb-5 border-t border-slate-100">
-                    <div className="pt-4 space-y-3">
+                {/* Body — scrollable */}
+                <div className="flex-1 overflow-y-auto">
+                    {/* Resource Details */}
+                    <div className="px-5 py-4 space-y-3">
                         <div>
-                            <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">URL</label>
-                            <input
-                                type="url"
-                                value={url}
-                                onChange={(e) => setUrl(e.target.value)}
-                                placeholder="https://example.com"
-                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
-                            />
+                            <label className="text-[10px] font-semibold text-[#9a8b78] uppercase tracking-widest mb-1 block" style={{ fontFamily: "'JetBrains Mono', monospace" }}>URL</label>
+                            <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com" className="input-professional" />
                         </div>
-                        <div>
-                            <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Title</label>
-                            <input
-                                type="text"
-                                value={title}
-                                onChange={(e) => setTitle(e.target.value)}
-                                placeholder="Resource title"
-                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-medium"
-                            />
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="flex gap-3">
+                            <div className="flex-1">
+                                <label className="text-[10px] font-semibold text-[#9a8b78] uppercase tracking-widest mb-1 block" style={{ fontFamily: "'JetBrains Mono', monospace" }}>Title</label>
+                                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Resource title" className="input-professional font-medium" />
+                            </div>
                             <div>
-                                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Category</label>
+                                <label className="text-[10px] font-semibold text-[#9a8b78] uppercase tracking-widest mb-1 block" style={{ fontFamily: "'JetBrains Mono', monospace" }}>Icon</label>
+                                <IconPicker value={icon} onChange={setIcon} size="sm" />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-semibold text-[#9a8b78] uppercase tracking-widest mb-1 block" style={{ fontFamily: "'JetBrains Mono', monospace" }}>Tags</label>
+                            <input type="text" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="react, tutorial" className="input-professional" />
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-semibold text-[#9a8b78] uppercase tracking-widest mb-1 block" style={{ fontFamily: "'JetBrains Mono', monospace" }}>Notes</label>
+                            <textarea value={note} onChange={(e) => { if (e.target.value.length <= 1000) setNote(e.target.value); }} placeholder="Why did you save this?" rows={2} className="input-professional resize-none" maxLength={1000} />
+                            <div className="flex justify-end mt-1">
+                                <span className={`text-[10px] ${note.length > 900 ? "text-red-500" : "text-[#b8aa98]"}`} style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                                    {note.length}/1000
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Category Section */}
+                    <div className="px-5 py-4 border-t border-[#ebe4db] bg-[#fdfcfb]">
+                        <label className="text-[10px] font-semibold text-[#9a8b78] uppercase tracking-widest mb-2.5 block" style={{ fontFamily: "'JetBrains Mono', monospace" }}>Category</label>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            {availableCategories.map((cat) => {
+                                const isActive = category === cat;
+                                const colorVal = categoryColors?.[cat];
+                                const dotClass = colorVal ? CATEGORY_COLOR_DOTS[colorVal] : null;
+                                return (
+                                    <button
+                                        key={cat}
+                                        onClick={() => setCategory(cat)}
+                                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide rounded-md transition-colors border ${isActive
+                                            ? "bg-[#1f1a14] text-white border-[#1f1a14]"
+                                            : getCategoryColorClasses(colorVal)
+                                            }`}
+                                    >
+                                        {dotClass && !isActive && (
+                                            <span className={`w-2 h-2 rounded-full ${dotClass} flex-shrink-0`} />
+                                        )}
+                                        {cat}
+                                    </button>
+                                );
+                            })}
+                            <button
+                                onClick={() => setShowCustomCat(!showCustomCat)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide rounded-md transition-colors border border-dashed border-[#d9cfc2] text-[#9a8b78] hover:border-[#9a8b78] hover:text-[#5c4f3f] hover:bg-[#f5f0eb]"
+                            >
+                                <Plus className="w-3 h-3" />
+                                New
+                            </button>
+                        </div>
+                        {showCustomCat && (
+                            <div className="mt-2.5 animate-fade-in">
                                 <input
                                     type="text"
                                     value={category}
                                     onChange={(e) => setCategory(e.target.value)}
-                                    placeholder="e.g., Frontend"
-                                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
+                                    placeholder="Type a custom category name..."
+                                    className="input-professional text-[12px]"
+                                    autoFocus
                                 />
-                            </div>
-                            <div>
-                                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Tags</label>
-                                <input
-                                    type="text"
-                                    value={tags}
-                                    onChange={(e) => setTags(e.target.value)}
-                                    placeholder="react, tutorial"
-                                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
-                                />
-                            </div>
-                        </div>
-                        {/* Suggested categories */}
-                        {availableCategories.length > 0 && (
-                            <div className="flex flex-wrap gap-1.5">
-                                {availableCategories.map((cat) => (
-                                    <button
-                                        key={cat}
-                                        onClick={() => setCategory(cat)}
-                                        className={`px-2.5 py-1 text-[11px] font-medium rounded-lg transition-colors ${category === cat
-                                            ? "bg-indigo-100 text-indigo-700 border border-indigo-200"
-                                            : "bg-slate-50 text-slate-500 border border-slate-100 hover:bg-slate-100 hover:text-slate-700"
-                                            }`}
-                                    >
-                                        {cat}
-                                    </button>
-                                ))}
                             </div>
                         )}
-                        <div>
-                            <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Notes</label>
-                            <textarea
-                                value={note}
-                                onChange={(e) => setNote(e.target.value)}
-                                placeholder="Why did you save this?"
-                                rows={2}
-                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all resize-none"
+                    </div>
+
+                    {/* Color Picker Section */}
+                    {category && onSetCategoryColor && (
+                        <div className="px-5 py-4 border-t border-[#ebe4db]">
+                            <CategoryColorPicker
+                                category={category}
+                                currentColor={categoryColors?.[category]}
+                                onSelect={(color) => onSetCategoryColor(category, color)}
+                                standalone
                             />
                         </div>
-                        <div className="flex items-center justify-between pt-1">
-                            <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-                                <Sparkles className="w-3 h-3 text-indigo-400" />
-                                <span>Editing resource</span>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <button
-                                    onClick={onClose}
-                                    className="text-sm font-medium text-slate-500 hover:text-slate-700 transition-colors"
-                                    disabled={isSaving}
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={handleSave}
-                                    disabled={isSaving || !title.trim() || !url.trim() || !category.trim()}
-                                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 disabled:text-slate-400 text-white text-sm font-bold rounded-xl transition-all flex items-center gap-2 shadow-sm shadow-indigo-500/20"
-                                >
-                                    {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                                    Save
-                                </button>
-                            </div>
-                        </div>
+                    )}
+                </div>
+
+                {/* Footer */}
+                <div className="px-5 py-4 border-t border-[#ebe4db] bg-[#fdfcfb] shrink-0 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-[10px] text-[#b8aa98]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                        <Sparkles className="w-3 h-3" />
+                        <span>// editing resource</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <button onClick={onClose} className="text-[13px] font-medium text-[#9a8b78] hover:text-[#5c4f3f] transition-colors" disabled={isSaving}>
+                            Cancel
+                        </button>
+                        <button
+                            onClick={handleSave}
+                            disabled={isSaving || !title.trim() || !url.trim() || !category.trim()}
+                            className="btn-primary disabled:bg-[#d9cfc2] disabled:text-[#9a8b78]"
+                        >
+                            {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                            Save
+                        </button>
                     </div>
                 </div>
             </div>

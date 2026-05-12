@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/src/components/Sidebar";
+import CommandPalette from "@/src/components/CommandPalette";
 import { getMe, User } from "@/src/services/authService";
 
 export default function DashboardLayout({
@@ -10,57 +11,58 @@ export default function DashboardLayout({
 }: {
     children: React.ReactNode;
 }) {
-    const router = useRouter();
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [loading, setLoading] = useState(true);
     const [user, setUser] = useState<User | null>(null);
+    const router = useRouter();
 
     useEffect(() => {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-
+        const token = localStorage.getItem("accessToken");
         if (!token) {
             router.push("/login");
-            setLoading(false);
             return;
         }
 
-        setIsAuthenticated(true);
         getMe()
-            .then(setUser)
-            .catch(() => {
-                // User fetch failed but auth token is valid — keep going
+            .then((userData) => {
+                setUser(userData);
+                setLoading(false);
             })
-            .finally(() => setLoading(false));
+            .catch(() => {
+                localStorage.removeItem("accessToken");
+                router.push("/login");
+            });
     }, [router]);
 
     const handleLogout = () => {
-        localStorage.removeItem('accessToken');
-        router.push('/login');
+        localStorage.removeItem("accessToken");
+        router.push("/login");
     };
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-slate-900">
-                <div className="animate-spin rounded-full h-10 w-10 border-2 border-slate-700 border-t-indigo-500"></div>
+            <div className="flex items-center justify-center h-screen bg-[#f5f0eb]">
+                <div className="flex flex-col items-center gap-3">
+                    <div className="w-8 h-8 border-2 border-[#d9cfc2] border-t-[#1f1a14] rounded-full animate-spin" />
+                    <p className="text-[12px] text-[#9a8b78]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>// loading workspace</p>
+                </div>
             </div>
         );
     }
 
-    if (!isAuthenticated) {
-        return null;
-    }
-
     return (
-        <div className="flex min-h-screen bg-slate-50">
-            {/* Sidebar - Fixed Left */}
-            <div className="hidden lg:block fixed inset-y-0 left-0 z-50">
+        <div className="flex h-screen bg-[#f5f0eb] overflow-hidden">
+            {/* Sidebar — hidden on mobile */}
+            <div className="hidden lg:block flex-shrink-0">
                 <Sidebar onLogout={handleLogout} user={user} />
             </div>
 
-            {/* Main Content - With left margin for sidebar */}
-            <div className="flex-1 lg:ml-[260px]">
+            {/* Main content */}
+            <main className="flex-1 overflow-y-auto">
                 {children}
-            </div>
+            </main>
+
+            {/* Command Palette */}
+            <CommandPalette />
         </div>
     );
 }

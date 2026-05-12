@@ -25,7 +25,7 @@ export default function ResourceList({ filters }: ResourceListProps) {
             const data = filters
                 ? await resourceService.getFiltered(filters)
                 : await resourceService.getAll();
-            setResources(data);
+            setResources(Array.isArray(data) ? data : data.content);
         } catch (error) {
             console.error("Failed to load resources", error);
         } finally {

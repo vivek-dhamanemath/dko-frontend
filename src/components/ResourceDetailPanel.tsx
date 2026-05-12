@@ -10,10 +10,13 @@ import {
     Trash2,
     Copy,
     Check,
-    ArrowUpRight
+    FileText,
+    Folder
 } from "lucide-react";
 import { Resource } from "../services/resourceService";
 import { getSource } from "../utils/sourceUtils";
+import { getIconComponent } from "./IconPicker";
+import { getCategoryColorClasses, CategoryColorMap } from "../services/categoryColorService";
 
 interface ResourceDetailPanelProps {
     resource: Resource | null;
@@ -23,34 +26,20 @@ interface ResourceDetailPanelProps {
     onDelete?: (id: string) => void;
     onArchive?: (id: string, isArchived: boolean) => void;
     onPin?: (id: string) => void;
+    categoryColors?: CategoryColorMap;
 }
 
-const getHostname = (url: string): string => {
-    try { return new URL(url).hostname.replace('www.', ''); }
-    catch { return 'link'; }
-};
-
-const getCategoryStyle = (category: string): string => {
-    const styles: Record<string, string> = {
-        'frontend': 'bg-sky-50 text-sky-600 border-sky-200',
-        'backend': 'bg-emerald-50 text-emerald-600 border-emerald-200',
-        'devops': 'bg-violet-50 text-violet-600 border-violet-200',
-        'react': 'bg-blue-50 text-blue-600 border-blue-200',
-        'design': 'bg-pink-50 text-pink-600 border-pink-200',
-        'tutorial': 'bg-amber-50 text-amber-600 border-amber-200',
-        'documentation': 'bg-slate-50 text-slate-600 border-slate-200',
-        'ai': 'bg-violet-50 text-violet-600 border-violet-200',
-        'api document': 'bg-cyan-50 text-cyan-600 border-cyan-200',
-        'document': 'bg-indigo-50 text-indigo-600 border-indigo-200',
-        'security': 'bg-red-50 text-red-600 border-red-200',
-    };
-    return styles[category?.toLowerCase()] || 'bg-slate-50 text-slate-600 border-slate-200';
-};
-
 const ensureProtocol = (url: string) => {
-    if (!url) return '';
-    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    if (!url) return "";
+    if (url.startsWith("http://") || url.startsWith("https://")) return url;
     return `https://${url}`;
+};
+
+const formatDateTime = (dateStr: string) => {
+    const d = new Date(dateStr);
+    const date = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+    return `${date} at ${time}`;
 };
 
 export default function ResourceDetailPanel({
@@ -60,7 +49,8 @@ export default function ResourceDetailPanel({
     onEdit,
     onDelete,
     onArchive,
-    onPin
+    onPin,
+    categoryColors
 }: ResourceDetailPanelProps) {
     const [isCopied, setIsCopied] = useState(false);
     const panelRef = useRef<HTMLDivElement>(null);
@@ -78,12 +68,8 @@ export default function ResourceDetailPanel({
     if (!resource) return null;
 
     const sourceInfo = getSource(resource.url);
-    const SourceIcon = sourceInfo.icon;
-    const hostname = getHostname(resource.url);
-
-    const formattedDate = new Date(resource.createdAt).toLocaleDateString('en-US', {
-        month: 'short', day: 'numeric', year: 'numeric',
-    });
+    const CustomIcon = getIconComponent(resource.icon);
+    const DisplayIcon = CustomIcon || sourceInfo.icon;
 
     const handleCopy = async () => {
         try {
@@ -91,169 +77,210 @@ export default function ResourceDetailPanel({
             setIsCopied(true);
             setTimeout(() => setIsCopied(false), 2000);
         } catch (err) {
-            console.error('Failed to copy:', err);
+            console.error("Failed to copy:", err);
         }
     };
 
     return (
         <>
-            {/* Backdrop */}
             <div
-                className={`fixed inset-0 z-40 bg-black/20 backdrop-blur-[2px] transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                className={`fixed inset-0 z-40 bg-black/20 backdrop-blur-[2px] transition-opacity duration-300 ${isOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`}
                 onClick={onClose}
             />
-
-            {/* Panel */}
             <div
                 ref={panelRef}
-                className={`fixed right-0 top-0 bottom-0 z-50 w-full max-w-sm bg-white border-l border-slate-200 shadow-2xl shadow-slate-900/10 transition-transform duration-300 ease-out flex flex-col ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
+                className={`fixed right-0 top-0 bottom-0 z-50 w-full max-w-md bg-white border-l border-[#ebe4db] shadow-2xl transition-transform duration-300 ease-out flex flex-col ${isOpen ? "translate-x-0" : "translate-x-full"}`}
             >
-                {/* Header — source icon + name + close */}
-                <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
-                    <div className="flex items-center gap-2">
-                        <div className={`w-7 h-7 rounded-lg ${sourceInfo.bgColor} flex items-center justify-center`}>
-                            <SourceIcon className={`w-3.5 h-3.5 ${sourceInfo.color}`} />
-                        </div>
-                        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">{sourceInfo.name}</span>
-                    </div>
-                    <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
-                        <X className="w-4 h-4" />
-                    </button>
-                </div>
-
-                {/* Scrollable content */}
-                <div className="flex-1 overflow-y-auto px-5 py-4">
-                    {/* Title + status badges */}
-                    <h2 className="text-lg font-bold text-slate-900 leading-snug">{resource.title}</h2>
-
-                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                        <span className="text-[13px] text-slate-400">{hostname}</span>
-                        {resource.isPinned && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded">
-                                <Pin className="w-2.5 h-2.5 fill-current" /> Pinned
-                            </span>
-                        )}
-                        {resource.isArchived && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
-                                <Archive className="w-2.5 h-2.5" /> Archived
-                            </span>
-                        )}
-                    </div>
-
-                    {/* Action buttons */}
-                    <div className="flex items-center gap-2 mt-4">
-                        <a
-                            href={ensureProtocol(resource.url)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-xl transition-colors"
-                        >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                            Open Link
-                        </a>
-                        <button
-                            onClick={handleCopy}
-                            className={`flex items-center justify-center gap-1.5 px-3 py-2 border text-sm font-medium rounded-xl transition-all ${isCopied
-                                ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
-                                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                                }`}
-                        >
-                            {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                            {isCopied ? 'Copied' : 'Copy'}
-                        </button>
-                    </div>
-
-                    {/* Details — compact rows */}
-                    <div className="mt-4 divide-y divide-slate-100">
-                        {/* Category + Date row */}
-                        <div className="flex items-center justify-between py-2.5">
-                            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Category</span>
-                            {resource.category ? (
-                                <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded border ${getCategoryStyle(resource.category)}`}>
-                                    {resource.category}
-                                </span>
-                            ) : (
-                                <span className="text-xs text-slate-300">—</span>
-                            )}
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto">
+                    {/* Top section */}
+                    <div className="px-6 pt-6 pb-5">
+                        {/* Title row with close button */}
+                        <div className="flex items-start justify-between gap-4">
+                            <h2 className="text-[22px] font-semibold text-[#1f1a14] leading-tight flex-1" style={{ fontFamily: "'DM Serif Display', serif" }}>
+                                {resource.title}
+                            </h2>
+                            <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-[#f5f0eb] flex items-center justify-center transition-colors shrink-0 mt-0.5">
+                                <X className="w-4 h-4 text-[#9a8b78]" />
+                            </button>
                         </div>
 
-                        <div className="flex items-center justify-between py-2.5">
-                            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Saved</span>
-                            <span className="text-xs text-slate-600 font-medium">{formattedDate}</span>
+                        {/* Action buttons */}
+                        <div className="grid grid-cols-2 gap-2.5 mt-5">
+                            <a
+                                href={ensureProtocol(resource.url)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-[#1f1a14] hover:bg-[#3d3429] text-white text-[13px] font-semibold rounded-lg transition-colors"
+                            >
+                                <ExternalLink className="w-4 h-4" />
+                                Open Link
+                            </a>
+                            <button
+                                onClick={handleCopy}
+                                className={`flex items-center justify-center gap-2 px-4 py-2.5 border text-[13px] font-semibold rounded-lg transition-all ${isCopied
+                                    ? "bg-[#f5f0eb] border-[#d9cfc2] text-[#1f1a14]"
+                                    : "bg-white border-[#ebe4db] text-[#5c4f3f] hover:bg-[#faf8f5]"
+                                    }`}
+                            >
+                                {isCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                                {isCopied ? "Copied!" : "Copy Link"}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Divider */}
+                    <div className="border-t border-[#ebe4db]" />
+
+                    {/* Metadata section */}
+                    <div className="px-6 py-5">
+                        {/* 2-column grid: Status + Last Modified */}
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-5">
+                            {/* Status */}
+                            <div>
+                                <div className="text-[11px] font-semibold text-[#9a8b78] uppercase tracking-widest mb-2" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                                    Status
+                                </div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                    {resource.isPinned ? (
+                                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#1f1a14] bg-[#f5f0eb] border border-[#ebe4db] px-2 py-0.5 rounded-md">
+                                            <Pin className="w-3 h-3 fill-current" /> PINNED
+                                        </span>
+                                    ) : resource.isArchived ? (
+                                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
+                                            <Archive className="w-3 h-3" /> ARCHIVED
+                                        </span>
+                                    ) : (
+                                        <span className="text-[14px] text-[#3d3429] font-medium">Active</span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Last Modified */}
+                            <div>
+                                <div className="text-[11px] font-semibold text-[#9a8b78] uppercase tracking-widest mb-2" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                                    Last Modified
+                                </div>
+                                <div className="text-[14px] text-[#3d3429] font-medium">
+                                    {formatDateTime(resource.updatedAt || resource.createdAt)}
+                                </div>
+                            </div>
+
+                            {/* Category */}
+                            <div>
+                                <div className="text-[11px] font-semibold text-[#9a8b78] uppercase tracking-widest mb-2" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                                    Category
+                                </div>
+                                {resource.category ? (
+                                    <span className={`inline-block text-[11px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-md border ${getCategoryColorClasses(categoryColors?.[resource.category])}`}>
+                                        {resource.category}
+                                    </span>
+                                ) : (
+                                    <span className="text-[13px] text-[#d9cfc2]">—</span>
+                                )}
+                            </div>
+
+                            {/* Collections */}
+                            <div>
+                                <div className="text-[11px] font-semibold text-[#9a8b78] uppercase tracking-widest mb-2" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                                    Collections
+                                </div>
+                                {resource.collections && resource.collections.length > 0 ? (
+                                    <div className="space-y-1">
+                                        {resource.collections.map(col => (
+                                            <div key={col.id} className="flex items-center gap-1.5 text-[14px] text-[#3d3429] font-medium">
+                                                <Folder className="w-3.5 h-3.5 text-[#9a8b78]" />
+                                                {col.name}
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <span className="text-[13px] text-[#d9cfc2]">—</span>
+                                )}
+                            </div>
                         </div>
 
-                        {/* Tags row */}
-                        {resource.tags && resource.tags.length > 0 && (
-                            <div className="py-2.5">
-                                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Tags</span>
-                                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                        {/* Tags — full width */}
+                        <div className="mt-5">
+                            <div className="text-[11px] font-semibold text-[#9a8b78] uppercase tracking-widest mb-2" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                                Tags
+                            </div>
+                            {resource.tags && resource.tags.length > 0 ? (
+                                <div className="flex flex-wrap gap-1.5">
                                     {resource.tags.map(tag => (
-                                        <span key={tag} className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded font-medium">
+                                        <span key={tag} className="text-[12px] text-[#5c4f3f] bg-[#f5f0eb] border border-[#ebe4db] px-2.5 py-1 rounded-md font-medium">
                                             #{tag}
                                         </span>
                                     ))}
                                 </div>
-                            </div>
-                        )}
+                            ) : (
+                                <span className="text-[13px] text-[#d9cfc2]">—</span>
+                            )}
+                        </div>
 
-                        {/* Collections */}
-                        {resource.collections && resource.collections.length > 0 && (
-                            <div className="py-2.5">
-                                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Collections</span>
-                                <div className="flex flex-wrap gap-1.5 mt-1.5">
-                                    {resource.collections.map(col => (
-                                        <span key={col.id} className="text-[11px] text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded font-medium">
-                                            {col.name}
-                                        </span>
-                                    ))}
+                        {/* URL — full width */}
+                        <div className="mt-5">
+                            <div className="text-[11px] font-semibold text-[#9a8b78] uppercase tracking-widest mb-2" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                                URL
+                            </div>
+                            <div className="text-[13px] text-[#7d6e5c] break-all leading-relaxed">
+                                {resource.url}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Notes section */}
+                    {resource.note && (
+                        <>
+                            <div className="border-t border-[#ebe4db]" />
+                            <div className="px-6 py-5">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <FileText className="w-4 h-4 text-[#9a8b78]" />
+                                    <span className="text-[11px] font-semibold text-[#9a8b78] uppercase tracking-widest" style={{ fontFamily: "'JetBrains Mono', monospace" }}>Notes</span>
+                                </div>
+                                <div className="bg-[#faf8f5] border border-[#ebe4db] rounded-lg px-4 py-3 overflow-hidden">
+                                    <p className="text-[14px] text-[#3d3429] leading-relaxed whitespace-pre-wrap break-words" style={{ overflowWrap: "break-word", wordBreak: "break-word" }}>
+                                        {resource.note}
+                                    </p>
                                 </div>
                             </div>
-                        )}
-
-                        {/* Notes */}
-                        {resource.note && (
-                            <div className="py-2.5">
-                                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Notes</span>
-                                <p className="text-[13px] text-slate-700 leading-relaxed mt-1.5 bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
-                                    {resource.note}
-                                </p>
-                            </div>
-                        )}
-                    </div>
+                        </>
+                    )}
                 </div>
 
-                {/* Footer — sticky at bottom */}
-                <div className="px-5 py-3 border-t border-slate-100 bg-slate-50/50 shrink-0">
-                    <div className="flex items-center gap-1.5">
+                {/* Footer */}
+                <div className="px-6 py-4 border-t border-[#ebe4db] bg-[#faf8f5] shrink-0">
+                    <div className="flex items-center gap-2">
                         <button
                             onClick={() => onPin?.(resource.id)}
-                            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors ${resource.isPinned
-                                ? 'bg-indigo-50 text-indigo-600 border border-indigo-200'
-                                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                            className={`flex items-center gap-1.5 px-3 h-9 rounded-lg text-[12px] font-semibold transition-colors ${resource.isPinned
+                                ? "bg-[#1f1a14] text-white"
+                                : "bg-white border border-[#ebe4db] text-[#5c4f3f] hover:bg-[#f5f0eb]"
                                 }`}
                         >
-                            <Pin className={`w-3.5 h-3.5 ${resource.isPinned ? 'fill-current' : ''}`} />
-                            {resource.isPinned ? 'Unpin' : 'Pin'}
+                            <Pin className={`w-3.5 h-3.5 ${resource.isPinned ? "fill-current" : ""}`} />
+                            {resource.isPinned ? "Unpin" : "Pin"}
                         </button>
                         <button
                             onClick={() => { onEdit?.(resource); onClose(); }}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+                            className="flex items-center gap-1.5 px-3 h-9 rounded-lg bg-white border border-[#ebe4db] text-[#5c4f3f] hover:bg-[#f5f0eb] text-[12px] font-semibold transition-colors"
                         >
                             <Edit3 className="w-3.5 h-3.5" />
                             Edit
                         </button>
                         <button
                             onClick={() => onArchive?.(resource.id, resource.isArchived)}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+                            className="flex items-center gap-1.5 px-3 h-9 rounded-lg bg-white border border-[#ebe4db] text-[#5c4f3f] hover:bg-[#f5f0eb] text-[12px] font-semibold transition-colors"
                         >
                             <Archive className="w-3.5 h-3.5" />
-                            {resource.isArchived ? 'Unarchive' : 'Archive'}
+                            {resource.isArchived ? "Unarchive" : "Archive"}
                         </button>
                         <button
                             onClick={() => { onDelete?.(resource.id); onClose(); }}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-white border border-red-200 text-red-600 hover:bg-red-50 transition-colors ml-auto"
+                            className="ml-auto flex items-center gap-1.5 px-3 h-9 rounded-lg bg-red-50 border border-red-100 text-red-500 hover:bg-red-100 hover:text-red-600 text-[12px] font-semibold transition-colors"
                         >
                             <Trash2 className="w-3.5 h-3.5" />
+                            Delete
                         </button>
                     </div>
                 </div>

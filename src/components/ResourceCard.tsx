@@ -1,22 +1,25 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import {
-    ExternalLink,
     Pin,
+    Copy,
+    ExternalLink,
     MoreHorizontal,
-    Trash2,
     Edit3,
     Archive,
-    RefreshCcw,
-    Folder,
-    ChevronRight,
+    Trash2,
+    RotateCcw,
+    FolderPlus,
     Check,
-    Copy,
-    ArrowUpRight
+    X
 } from "lucide-react";
-import { getSource } from "../utils/sourceUtils";
 import { Resource } from "../services/resourceService";
+import { Collection } from "../services/collectionService";
+import { getSource } from "../utils/sourceUtils";
+import { getIconComponent } from "./IconPicker";
+import { getCategoryColorClasses, CategoryColorMap } from "../services/categoryColorService";
 
 interface ResourceCardProps {
     resource: Resource;
@@ -24,54 +27,44 @@ interface ResourceCardProps {
     onDelete?: (id: string) => void;
     onArchive?: (id: string, isArchived: boolean) => void;
     onPin?: (id: string) => void;
+    onView?: (resource: Resource) => void;
     isSelected?: boolean;
-    onSelect?: (id: string, selected: boolean) => void;
-    isSelectionMode?: boolean;
-    isTrashMode?: boolean;
+    onSelect?: (id: string) => void;
+    showCheckbox?: boolean;
+    isTrash?: boolean;
     onRestore?: (id: string) => void;
     onPermanentDelete?: (id: string) => void;
-    availableCollections?: { id: string; name: string }[];
+    availableCollections?: Collection[];
     onAddToCollection?: (collectionId: string, resourceId: string) => void;
     onRemoveFromCollection?: (collectionId: string, resourceId: string) => void;
-    onView?: (resource: Resource) => void;
+    categoryColors?: CategoryColorMap;
 }
 
 const getHostname = (url: string): string => {
     try {
-        return new URL(url).hostname.replace('www.', '');
+        return new URL(url).hostname.replace("www.", "");
     } catch {
-        return 'link';
+        return "link";
     }
 };
 
-const getCategoryStyle = (category: string): string => {
-    const styles: Record<string, string> = {
-        'frontend': 'bg-sky-50 text-sky-600 border-sky-200',
-        'backend': 'bg-emerald-50 text-emerald-600 border-emerald-200',
-        'devops': 'bg-violet-50 text-violet-600 border-violet-200',
-        'react': 'bg-blue-50 text-blue-600 border-blue-200',
-        'design': 'bg-pink-50 text-pink-600 border-pink-200',
-        'tutorial': 'bg-amber-50 text-amber-600 border-amber-200',
-        'documentation': 'bg-slate-50 text-slate-600 border-slate-200',
-    };
-    return styles[category?.toLowerCase()] || 'bg-slate-50 text-slate-600 border-slate-200';
+
+const ensureProtocol = (url: string) => {
+    if (!url) return "";
+    if (url.startsWith("http://") || url.startsWith("https://")) return url;
+    return `https://${url}`;
 };
 
-const getCategoryCardStyle = (category: string): { bg: string; hoverBg: string; border: string } => {
-    const styles: Record<string, { bg: string; hoverBg: string; border: string }> = {
-        'frontend': { bg: 'bg-sky-50', hoverBg: 'hover:bg-sky-100/70', border: 'border-sky-200' },
-        'backend': { bg: 'bg-emerald-50', hoverBg: 'hover:bg-emerald-100/70', border: 'border-emerald-200' },
-        'devops': { bg: 'bg-violet-50', hoverBg: 'hover:bg-violet-100/70', border: 'border-violet-200' },
-        'react': { bg: 'bg-blue-50', hoverBg: 'hover:bg-blue-100/70', border: 'border-blue-200' },
-        'design': { bg: 'bg-pink-50', hoverBg: 'hover:bg-pink-100/70', border: 'border-pink-200' },
-        'tutorial': { bg: 'bg-amber-50', hoverBg: 'hover:bg-amber-100/70', border: 'border-amber-200' },
-        'documentation': { bg: 'bg-slate-50', hoverBg: 'hover:bg-slate-100', border: 'border-slate-200' },
-        'ai': { bg: 'bg-violet-50', hoverBg: 'hover:bg-violet-100/70', border: 'border-violet-200' },
-        'api document': { bg: 'bg-cyan-50', hoverBg: 'hover:bg-cyan-100/70', border: 'border-cyan-200' },
-        'document': { bg: 'bg-indigo-50', hoverBg: 'hover:bg-indigo-100/70', border: 'border-indigo-200' },
-        'security': { bg: 'bg-red-50', hoverBg: 'hover:bg-red-100/70', border: 'border-red-200' },
-    };
-    return styles[category?.toLowerCase()] || { bg: 'bg-slate-50', hoverBg: 'hover:bg-slate-100', border: 'border-slate-200' };
+const formatRelativeDate = (date: string) => {
+    const d = new Date(date);
+    const now = new Date();
+    const diff = now.getTime() - d.getTime();
+    const days = Math.floor(diff / 86400000);
+    if (days === 0) return "Today";
+    if (days === 1) return "Yesterday";
+    if (days < 7) return `${days}d ago`;
+    if (days < 30) return `${Math.floor(days / 7)}w ago`;
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 };
 
 export default function ResourceCard({
@@ -80,273 +73,320 @@ export default function ResourceCard({
     onDelete,
     onArchive,
     onPin,
+    onView,
     isSelected,
     onSelect,
-    isSelectionMode,
-    isTrashMode = false,
+    showCheckbox,
+    isTrash,
     onRestore,
     onPermanentDelete,
     availableCollections = [],
     onAddToCollection,
     onRemoveFromCollection,
-    onView
+    categoryColors,
 }: ResourceCardProps) {
-    const [showActions, setShowActions] = useState(false);
-    const [showFolderMenu, setShowFolderMenu] = useState(false);
-    const [isCopying, setIsCopying] = useState(false);
+    const [menuOpen, setMenuOpen] = useState(false);
+    const [collectionsSubmenu, setCollectionsSubmenu] = useState(false);
+    const [copied, setCopied] = useState(false);
+    const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
     const menuRef = useRef<HTMLDivElement>(null);
+    const menuBtnRef = useRef<HTMLButtonElement>(null);
+    const actionsRef = useRef<HTMLDivElement>(null);
+
+    const sourceInfo = getSource(resource.url);
+    const CustomIcon = getIconComponent(resource.icon);
+    const DisplayIcon = CustomIcon || sourceInfo.icon;
+    const hostname = getHostname(resource.url);
+
+    const resourceCollectionIds = new Set(
+        resource.collections?.map((c) => c.id) || []
+    );
 
     useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-                setShowActions(false);
-                setShowFolderMenu(false);
+        const handler = (e: MouseEvent) => {
+            const target = e.target as Node;
+            if (
+                menuRef.current && !menuRef.current.contains(target) &&
+                menuBtnRef.current && !menuBtnRef.current.contains(target)
+            ) {
+                setMenuOpen(false);
+                setCollectionsSubmenu(false);
             }
         };
-        if (showActions) {
-            document.addEventListener("mousedown", handleClickOutside);
+        if (menuOpen) {
+            document.addEventListener("mousedown", handler);
         }
-        return () => {
-            document.removeEventListener("mousedown", handleClickOutside);
-        };
-    }, [showActions]);
+        return () => document.removeEventListener("mousedown", handler);
+    }, [menuOpen]);
 
-    const hostname = getHostname(resource.url);
-    const sourceInfo = getSource(resource.url);
-    const SourceIcon = sourceInfo.icon;
-
-    const formattedDate = new Date(resource.createdAt).toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-    });
-
-    const ensureProtocol = (url: string) => {
-        if (!url) return '';
-        if (url.startsWith('http://') || url.startsWith('https://')) return url;
-        return `https://${url}`;
-    };
-
-    const handleCardClick = (e: React.MouseEvent) => {
-        const target = e.target as HTMLElement;
-        if (target.closest('button') || target.closest('a') || target.closest('.selection-checkbox-area')) {
+    const toggleMenu = useCallback(() => {
+        if (menuOpen) {
+            setMenuOpen(false);
+            setCollectionsSubmenu(false);
             return;
         }
-        if (onView) {
-            onView(resource);
-        } else {
-            onSelect?.(resource.id, !isSelected);
+        if (menuBtnRef.current) {
+            const rect = menuBtnRef.current.getBoundingClientRect();
+            const menuHeight = 200; // approximate menu height
+            const spaceBelow = window.innerHeight - rect.bottom;
+            const flipUp = spaceBelow < menuHeight;
+
+            setMenuPos({
+                top: flipUp ? rect.top - 4 : rect.bottom + 4,
+                left: rect.right - 192, // w-48 = 192px, align right edge
+            });
+            setMenuOpen(true);
         }
-    };
+    }, [menuOpen]);
 
-    const handleOpenLink = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        window.open(ensureProtocol(resource.url), '_blank', 'noopener,noreferrer');
-    };
+    // Reposition on scroll while menu is open
+    useEffect(() => {
+        if (!menuOpen) return;
+        const reposition = () => {
+            if (menuBtnRef.current) {
+                const rect = menuBtnRef.current.getBoundingClientRect();
+                const menuHeight = 200;
+                const spaceBelow = window.innerHeight - rect.bottom;
+                const flipUp = spaceBelow < menuHeight;
+                setMenuPos({
+                    top: flipUp ? rect.top - 4 : rect.bottom + 4,
+                    left: rect.right - 192,
+                });
+            }
+        };
+        window.addEventListener("scroll", reposition, true);
+        window.addEventListener("resize", reposition);
+        return () => {
+            window.removeEventListener("scroll", reposition, true);
+            window.removeEventListener("resize", reposition);
+        };
+    }, [menuOpen]);
 
-    const handleCopyLink = async (e: React.MouseEvent) => {
-        e.stopPropagation();
+    const handleCopy = async () => {
         try {
             await navigator.clipboard.writeText(resource.url);
-            setIsCopying(true);
-            setTimeout(() => setIsCopying(false), 2000);
-        } catch (err) {
-            console.error('Failed to copy link:', err);
-        }
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch { }
     };
 
-    const cardStyle = getCategoryCardStyle(resource.category);
+    const isSelectMode = !!showCheckbox;
+
+    const handleContentClick = () => {
+        if (isSelectMode) {
+            onSelect?.(resource.id);
+        } else if (!isTrash) {
+            onView?.(resource);
+        }
+    };
 
     return (
         <div
-            onClick={handleCardClick}
-            className={`group relative rounded-xl p-3 transition-all duration-150 hover:shadow-sm cursor-default border ${showActions ? 'z-50' : 'z-10'} ${isSelected ? 'ring-1 ring-indigo-500/40 bg-indigo-50/50 border-indigo-200' : `${cardStyle.bg} ${cardStyle.hoverBg} ${cardStyle.border}`}`}
+            className={`resource-card group relative transition-all duration-200 ${
+                isSelected
+                    ? "bg-[#f0ebe5] border-[#1f1a14]/20"
+                    : isSelectMode
+                        ? "hover:bg-[#faf8f5]"
+                        : ""
+            } ${isTrash ? "opacity-80" : ""}`}
         >
-            {/* Top row: Icon + Title + Actions */}
-            <div className="flex items-start gap-2.5">
-                {/* Checkbox */}
-                <div
-                    className="selection-checkbox-area cursor-pointer z-10 pt-1 shrink-0"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onSelect?.(resource.id, !isSelected);
-                    }}
-                >
-                    <div className={`w-[18px] h-[18px] rounded border transition-all flex items-center justify-center ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 bg-white group-hover:border-indigo-400'}`}>
-                        {isSelected && <Check className="w-3 h-3 text-white stroke-[3.5]" />}
+            {/* Left accent bar — appears when selected */}
+            {isSelected && (
+                <div className="absolute left-0 top-[1px] bottom-[1px] w-[3px] bg-[#1f1a14] rounded-full" />
+            )}
+
+            {/* Top row: source icon + title + actions */}
+            <div className="flex items-start gap-3">
+
+                {/* Source icon — transforms into check when selected */}
+                {isSelectMode ? (
+                    <div
+                        onClick={handleContentClick}
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 cursor-pointer transition-all duration-200 ${
+                            isSelected
+                                ? "bg-[#1f1a14]"
+                                : "bg-[#ebe4db] group-hover:bg-[#d9cfc2]"
+                        }`}
+                    >
+                        {isSelected
+                            ? <Check className="w-4 h-4 text-white" />
+                            : <DisplayIcon className="w-4 h-4 text-[#9a8b78]" />
+                        }
                     </div>
-                </div>
+                ) : (
+                    <a
+                        href={ensureProtocol(resource.url)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`w-8 h-8 rounded-lg ${CustomIcon ? "bg-[#f5f0eb]" : sourceInfo.bgColor} flex items-center justify-center flex-shrink-0 transition-transform hover:scale-105`}
+                    >
+                        <DisplayIcon className={`w-4 h-4 ${CustomIcon ? "text-[#1f1a14]" : sourceInfo.color}`} />
+                    </a>
+                )}
 
-                {/* Source Icon */}
-                <div
-                    onClick={handleOpenLink}
-                    className={`w-10 h-10 rounded-lg ${sourceInfo.bgColor} flex items-center justify-center shrink-0 cursor-pointer transition-transform group-hover:scale-105`}
-                >
-                    <SourceIcon className={`w-5 h-5 ${sourceInfo.color}`} />
-                </div>
-
-                {/* Title + Hostname */}
-                <div className="flex-1 min-w-0 pt-0.5">
-                    <h3 className="text-[13px] font-semibold text-slate-800 truncate leading-snug group-hover:text-slate-900 transition-colors">
+                {/* Title + hostname — clickable area for detail view */}
+                <div className="flex-1 min-w-0 cursor-pointer" onClick={handleContentClick}>
+                    <h3 className={`text-[13.5px] font-semibold text-[#1f1a14] leading-snug line-clamp-1 ${isTrash ? "line-through opacity-70" : ""}`}>
                         {resource.title}
                     </h3>
-                    <span className="text-[11px] text-slate-400 truncate block leading-tight mt-px">
-                        {hostname}
-                    </span>
+                    <p className="text-[11px] text-[#9a8b78] mt-0.5 truncate">{hostname}</p>
                 </div>
 
-                {/* Pin + Actions on hover */}
-                <div className="flex items-center gap-1 shrink-0">
-                    {!isTrashMode && resource.isPinned && (
-                        <button
-                            onClick={(e) => { e.stopPropagation(); onPin?.(resource.id); }}
-                            className="text-indigo-600 p-1"
-                        >
-                            <Pin className="w-4 h-4 fill-current" />
-                        </button>
-                    )}
-                    <div className="flex items-center gap-0.5">
-                        {!isTrashMode && !resource.isPinned && (
-                            <button
-                                onClick={(e) => { e.stopPropagation(); onPin?.(resource.id); }}
-                                className="p-1.5 rounded-md text-slate-400 hover:text-indigo-500 transition-colors"
-                                title="Pin"
-                            >
-                                <Pin className="w-4 h-4" />
-                            </button>
+                {/* Quick actions — always visible, own click handlers, NOT inside the content click zone */}
+                {!isSelectMode && (
+                    <div className="flex items-center gap-0.5 flex-shrink-0">
+                        {!isTrash && (
+                            <>
+                                <button
+                                    onClick={() => onPin?.(resource.id)}
+                                    className={`icon-btn ${resource.isPinned ? "text-[#1f1a14]" : "text-[#d9cfc2] hover:text-[#5c4f3f]"}`}
+                                    title={resource.isPinned ? "Unpin" : "Pin"}
+                                >
+                                    <Pin className={`w-3.5 h-3.5 pointer-events-none ${resource.isPinned ? "fill-current" : ""}`} />
+                                </button>
+                                <button
+                                    onClick={() => handleCopy()}
+                                    className={`icon-btn ${copied ? "" : "text-[#d9cfc2] hover:text-[#5c4f3f]"}`}
+                                    title="Copy link"
+                                >
+                                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-600 pointer-events-none" /> : <Copy className="w-3.5 h-3.5 pointer-events-none" />}
+                                </button>
+                                <a
+                                    href={ensureProtocol(resource.url)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="icon-btn text-[#d9cfc2] hover:text-[#5c4f3f]"
+                                    title="Open link"
+                                >
+                                    <ExternalLink className="w-3.5 h-3.5 pointer-events-none" />
+                                </a>
+                                <button
+                                    onClick={() => onEdit?.(resource)}
+                                    className="icon-btn text-[#d9cfc2] hover:text-[#5c4f3f]"
+                                    title="Edit"
+                                >
+                                    <Edit3 className="w-3.5 h-3.5 pointer-events-none" />
+                                </button>
+                            </>
                         )}
-                        <button
-                            onClick={handleCopyLink}
-                            className={`p-1.5 rounded-md transition-all ${isCopying ? 'text-emerald-600' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'}`}
-                            title="Copy Link"
-                        >
-                            {isCopying ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                        </button>
-                        <button
-                            onClick={handleOpenLink}
-                            className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all"
-                            title="Open"
-                        >
-                            <ArrowUpRight className="w-4 h-4" />
-                        </button>
-                        <div className="relative" ref={menuRef}>
-                            <button
-                                onClick={(e) => { e.stopPropagation(); setShowActions(!showActions); }}
-                                className={`p-1.5 rounded-md transition-all ${showActions ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'}`}
-                            >
-                                <MoreHorizontal className="w-4 h-4" />
-                            </button>
 
-                            {showActions && (
-                                <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-xl border border-slate-200 shadow-xl z-[100] py-1 overflow-visible">
-                                    <div className="px-3 py-1 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 mb-0.5">
-                                        Actions
-                                    </div>
-                                    {isTrashMode ? (
-                                        <>
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); setShowActions(false); onRestore?.(resource.id); }}
-                                                className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[12px] font-medium text-emerald-600 hover:bg-emerald-50 transition-colors text-left"
-                                            >
-                                                <RefreshCcw className="w-3.5 h-3.5" /> Restore
-                                            </button>
-                                            <div className="h-px bg-slate-100 mx-2.5" />
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); setShowActions(false); onPermanentDelete?.(resource.id); }}
-                                                className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[12px] font-medium text-red-600 hover:bg-red-50 transition-colors text-left"
-                                            >
-                                                <Trash2 className="w-3.5 h-3.5" /> Delete Forever
-                                            </button>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); setShowActions(false); onEdit?.(resource); }}
-                                                className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[12px] font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors text-left"
-                                            >
-                                                <Edit3 className="w-3.5 h-3.5" /> Edit
-                                            </button>
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); setShowActions(false); onArchive?.(resource.id, resource.isArchived); }}
-                                                className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[12px] font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors text-left"
-                                            >
-                                                <Archive className="w-3.5 h-3.5" /> {resource.isArchived ? "Unarchive" : "Archive"}
-                                            </button>
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); setShowFolderMenu(!showFolderMenu); }}
-                                                className="w-full flex items-center justify-between px-3 py-1.5 text-[12px] font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors"
-                                            >
-                                                <div className="flex items-center gap-2.5">
-                                                    <Folder className="w-3.5 h-3.5" /> Organize
-                                                </div>
-                                                <ChevronRight className={`w-3.5 h-3.5 text-slate-400 transition-transform ${showFolderMenu ? 'rotate-90 text-indigo-500' : ''}`} />
-                                            </button>
-
-                                            {showFolderMenu && (
-                                                <div className="mx-1.5 mb-1 bg-slate-50 rounded-lg border border-slate-100 py-1 max-h-48 overflow-y-auto">
-                                                    <div className="px-2.5 py-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                                                        Collections
-                                                    </div>
-                                                    {availableCollections.length > 0 ? (
-                                                        availableCollections.map(folder => {
-                                                            const isMember = resource.collections?.some(c => c.id === folder.id);
-                                                            return (
-                                                                <button
-                                                                    key={folder.id}
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        if (isMember) onRemoveFromCollection?.(folder.id, resource.id);
-                                                                        else onAddToCollection?.(folder.id, resource.id);
-                                                                        setShowFolderMenu(false);
-                                                                        setShowActions(false);
-                                                                    }}
-                                                                    className="w-full flex items-center justify-between px-2.5 py-1.5 text-[12px] font-medium text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 transition-colors text-left rounded-md"
-                                                                >
-                                                                    <span className="truncate pr-2">{folder.name}</span>
-                                                                    {isMember && <Check className="w-3 h-3 text-indigo-500" />}
-                                                                </button>
-                                                            );
-                                                        })
-                                                    ) : (
-                                                        <div className="px-2.5 py-2 text-[11px] text-slate-400 italic">No collections yet</div>
-                                                    )}
-                                                </div>
-                                            )}
-                                            <div className="h-px bg-slate-100 mx-2.5" />
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); setShowActions(false); onDelete?.(resource.id); }}
-                                                className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[12px] font-medium text-red-600 hover:bg-red-50 transition-colors text-left"
-                                            >
-                                                <Trash2 className="w-3.5 h-3.5" /> Move to Trash
-                                            </button>
-                                        </>
-                                    )}
-                                </div>
-                            )}
-                        </div>
+                        {/* More menu trigger */}
+                        <button
+                            ref={menuBtnRef}
+                            onClick={() => toggleMenu()}
+                            className="icon-btn text-[#d9cfc2] hover:text-[#5c4f3f]"
+                        >
+                            <MoreHorizontal className="w-3.5 h-3.5 pointer-events-none" />
+                        </button>
                     </div>
-                </div>
+                )}
+
+                {/* Portal dropdown menu */}
+                {menuOpen && menuPos && createPortal(
+                    <div
+                        ref={menuRef}
+                        className="fixed w-48 bg-white border border-[#ebe4db] rounded-lg shadow-elevated py-1 animate-fade-in"
+                        style={{ top: menuPos.top, left: menuPos.left, zIndex: 9999 }}
+                    >
+                        {isTrash ? (
+                            <>
+                                <button
+                                    onClick={() => { onRestore?.(resource.id); setMenuOpen(false); }}
+                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-[#5c4f3f] hover:bg-[#faf8f5] transition-colors font-medium"
+                                >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                    Restore
+                                </button>
+                                <button
+                                    onClick={() => { onPermanentDelete?.(resource.id); setMenuOpen(false); }}
+                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-red-600 hover:bg-red-50 transition-colors font-medium"
+                                >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    Delete Forever
+                                </button>
+                            </>
+                        ) : (
+                            <>
+                                <button
+                                    onClick={() => { onArchive?.(resource.id, resource.isArchived); setMenuOpen(false); }}
+                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-[#5c4f3f] hover:bg-[#faf8f5] transition-colors font-medium"
+                                >
+                                    <Archive className="w-3.5 h-3.5" />
+                                    {resource.isArchived ? "Unarchive" : "Archive"}
+                                </button>
+                                {/* Collections submenu */}
+                                <button
+                                    onClick={() => setCollectionsSubmenu(!collectionsSubmenu)}
+                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-[#5c4f3f] hover:bg-[#faf8f5] transition-colors font-medium"
+                                >
+                                    <FolderPlus className="w-3.5 h-3.5" />
+                                    Organize
+                                </button>
+                                {collectionsSubmenu && availableCollections.length > 0 && (
+                                    <div className="border-t border-[#ebe4db] mt-1 pt-1 mx-2">
+                                        {availableCollections.map((col) => {
+                                            const isIn = resourceCollectionIds.has(col.id);
+                                            return (
+                                                <button
+                                                    key={col.id}
+                                                    onClick={() => {
+                                                        if (isIn) onRemoveFromCollection?.(col.id, resource.id);
+                                                        else onAddToCollection?.(col.id, resource.id);
+                                                        setMenuOpen(false);
+                                                    }}
+                                                    className="w-full flex items-center gap-2 px-2 py-1.5 text-[11px] text-[#5c4f3f] hover:bg-[#faf8f5] rounded transition-colors"
+                                                >
+                                                    {isIn ? <Check className="w-3 h-3 text-emerald-600" /> : <div className="w-3 h-3" />}
+                                                    <span className="truncate">{col.name}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                                <div className="border-t border-[#ebe4db] mt-1 pt-1">
+                                    <button
+                                        onClick={() => { onDelete?.(resource.id); setMenuOpen(false); }}
+                                        className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-red-600 hover:bg-red-50 transition-colors font-medium"
+                                    >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                        Delete
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>,
+                    document.body
+                )}
             </div>
 
-            {/* Bottom row: Category + Date + Tags — aligned under title */}
-            <div className="flex items-center gap-1.5 mt-2 ml-[62px] flex-wrap">
+            {/* Notes preview */}
+            {resource.note && !isTrash && (
+                <p className="text-[11.5px] text-[#9a8b78] mt-2 line-clamp-2 leading-relaxed pl-11 cursor-pointer" onClick={handleContentClick}>
+                    {resource.note}
+                </p>
+            )}
+
+            {/* Bottom row: category + date + tags */}
+            <div className="flex items-center gap-2 mt-2.5 pl-11 flex-wrap cursor-pointer" onClick={handleContentClick}>
                 {resource.category && (
-                    <span className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border leading-none ${getCategoryStyle(resource.category)}`}>
+                    <span className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded border ${getCategoryColorClasses(categoryColors?.[resource.category])}`}>
                         {resource.category}
                     </span>
                 )}
-                <span className="text-[10px] text-slate-400 tabular-nums">{formattedDate}</span>
+                <span className="text-[10px] text-[#b8aa98]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                    {formatRelativeDate(resource.createdAt)}
+                </span>
                 {resource.tags && resource.tags.length > 0 && (
-                    <>
-                        <span className="text-slate-200">·</span>
-                        {resource.tags.slice(0, 2).map(tag => (
-                            <span key={tag} className="text-[10px] text-slate-400 bg-slate-50 border border-slate-100 px-1.5 py-px rounded">
+                    <div className="flex items-center gap-1 ml-auto">
+                        {resource.tags.slice(0, 2).map((tag) => (
+                            <span key={tag} className="text-[10px] text-[#7d6e5c] bg-[#f5f0eb] px-1.5 py-0.5 rounded">
                                 #{tag}
                             </span>
                         ))}
                         {resource.tags.length > 2 && (
-                            <span className="text-[10px] text-slate-400">+{resource.tags.length - 2}</span>
+                            <span className="text-[10px] text-[#b8aa98]">+{resource.tags.length - 2}</span>
                         )}
-                    </>
+                    </div>
                 )}
             </div>
         </div>

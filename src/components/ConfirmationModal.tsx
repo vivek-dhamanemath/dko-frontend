@@ -1,6 +1,6 @@
 "use client";
 
-import { X, AlertTriangle, Trash2 } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { useEffect } from "react";
 
 interface ConfirmationModalProps {
@@ -24,7 +24,6 @@ export default function ConfirmationModal({
     cancelLabel = "Cancel",
     isDestructive = true
 }: ConfirmationModalProps) {
-    // Handle Esc key
     useEffect(() => {
         const handleEsc = (e: KeyboardEvent) => {
             if (e.key === "Escape") onClose();
@@ -42,40 +41,28 @@ export default function ConfirmationModal({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/40 backdrop-blur-sm p-4 animate-fade-in">
-            <div
-                className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-scale-in"
-                onClick={(e) => e.stopPropagation()}
-            >
-                {/* Header/Icon */}
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 backdrop-blur-sm p-4 animate-fade-in">
+            <div className="bg-white rounded-xl w-full max-w-sm shadow-2xl overflow-hidden animate-modal-pop border border-[#ebe4db]" onClick={(e) => e.stopPropagation()}>
                 <div className="pt-8 pb-4 flex flex-col items-center text-center px-6">
-                    <div className={`w-14 h-14 rounded-full flex items-center justify-center mb-4 ${isDestructive ? "bg-red-50 text-red-600" : "bg-amber-50 text-amber-600"
-                        }`}>
-                        <AlertTriangle className="w-7 h-7" />
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 ${isDestructive ? "bg-red-50 text-red-600" : "bg-amber-50 text-amber-600"}`}>
+                        <AlertTriangle className="w-6 h-6" />
                     </div>
-                    <h3 className="text-xl font-bold text-slate-900 mb-2">{title}</h3>
-                    <p className="text-sm text-slate-500 leading-relaxed">
-                        {message}
-                    </p>
+                    <h3 className="text-[17px] font-semibold text-[#1f1a14] mb-2">{title}</h3>
+                    <p className="text-[13px] text-[#7d6e5c] leading-relaxed">{message}</p>
                 </div>
-
-                {/* Footer Actions */}
                 <div className="p-6 flex flex-col gap-2">
                     <button
-                        onClick={() => {
-                            onConfirm();
-                            onClose();
-                        }}
-                        className={`w-full py-3 rounded-xl font-bold text-sm transition-all shadow-lg active:scale-[0.98] ${isDestructive
-                                ? "bg-red-600 text-white hover:bg-red-700 shadow-red-500/20"
-                                : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-500/20"
+                        onClick={() => { onConfirm(); onClose(); }}
+                        className={`w-full py-2.5 rounded-lg font-semibold text-[13px] transition-all active:scale-[0.98] ${isDestructive
+                            ? "bg-red-600 text-white hover:bg-red-700"
+                            : "bg-[#1f1a14] text-white hover:bg-[#3d3429]"
                             }`}
                     >
                         {confirmLabel}
                     </button>
                     <button
                         onClick={onClose}
-                        className="w-full py-3 rounded-xl font-semibold text-sm text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition-all"
+                        className="w-full py-2.5 rounded-lg font-medium text-[13px] text-[#7d6e5c] hover:bg-[#faf8f5] transition-all"
                     >
                         {cancelLabel}
                     </button>
