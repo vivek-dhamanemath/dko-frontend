@@ -27,6 +27,28 @@ export const register = async (email: string, password: string) => {
     return data;
 };
 
+export const signInWithGoogle = async () => {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+            redirectTo: `${window.location.origin}/auth/callback`,
+        },
+    });
+    if (error) throw new Error(error.message);
+    return data;
+};
+
+export const signInWithGitHub = async () => {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "github",
+        options: {
+            redirectTo: `${window.location.origin}/auth/callback`,
+        },
+    });
+    if (error) throw new Error(error.message);
+    return data;
+};
+
 export const logout = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) throw new Error(error.message);
